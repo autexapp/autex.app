@@ -57,7 +57,7 @@ export default function LoginPage() {
         throw error
       }
 
-      router.push('/overview')
+      router.push('/dashboard')
       router.refresh()
     } catch (error) {
       if (error instanceof Error) {

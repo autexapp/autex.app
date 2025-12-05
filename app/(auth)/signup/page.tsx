@@ -70,7 +70,7 @@ export default function SignupPage() {
         setSuccess(true);
       } else {
         // User is logged in immediately
-        router.push('/overview');
+        router.push('/dashboard');
       }
     } catch (err: any) {
       setError(err.message || 'An error occurred during sign up');
