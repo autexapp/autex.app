@@ -81,19 +81,19 @@ export default function SignupPage() {
 
   if (success) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-white px-4">
-        <Card className="w-full max-w-md border-[#e5e5e5]">
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <Card className="w-full max-w-md border-border">
           <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl font-serif text-[#171717]">
+            <CardTitle className="text-2xl font-serif text-foreground">
               Check your email
             </CardTitle>
-            <CardDescription className="text-[#737373]">
+            <CardDescription className="text-muted-foreground">
               We've sent you a confirmation link. Please check your email to verify your account.
             </CardDescription>
           </CardHeader>
           <CardFooter>
             <Link href="/login" className="w-full">
-              <Button variant="outline" className="w-full border-[#e5e5e5] rounded-[0.625rem]">
+              <Button variant="outline" className="w-full border-border rounded-[0.625rem]">
                 Back to Login
               </Button>
             </Link>
@@ -104,99 +104,99 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-white px-4">
-      <Card className="w-full max-w-md border-[#e5e5e5]">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <Card className="w-full max-w-md border-border">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-serif text-[#171717]">
+          <CardTitle className="text-2xl font-serif text-foreground">
             Create an account
           </CardTitle>
-          <CardDescription className="text-[#737373]">
+          <CardDescription className="text-muted-foreground">
             Enter your details to get started with Autex
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit(onSubmit)}>
           <CardContent className="space-y-4">
             {error && (
-              <div className="rounded-[0.625rem] bg-red-50 p-3 text-sm text-red-600 border border-red-200">
+              <div className="rounded-[0.625rem] bg-destructive/10 p-3 text-sm text-destructive border border-destructive/20">
                 {error}
               </div>
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="businessName" className="text-[#171717]">
+              <Label htmlFor="businessName" className="text-foreground">
                 Business Name
               </Label>
               <Input
                 id="businessName"
                 type="text"
                 placeholder="Acme Inc."
-                className="border-[#e5e5e5] rounded-[0.625rem]"
+                className="border-border rounded-[0.625rem]"
                 {...register('businessName')}
               />
               {errors.businessName && (
-                <p className="text-sm text-red-600">{errors.businessName.message}</p>
+                <p className="text-sm text-destructive">{errors.businessName.message}</p>
               )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="phone" className="text-[#171717]">
+              <Label htmlFor="phone" className="text-foreground">
                 Phone Number
               </Label>
               <Input
                 id="phone"
                 type="tel"
-                placeholder="+1 (555) 000-0000"
-                className="border-[#e5e5e5] rounded-[0.625rem]"
+                placeholder="01915969330"
+                className="border-border rounded-[0.625rem]"
                 {...register('phone')}
               />
               {errors.phone && (
-                <p className="text-sm text-red-600">{errors.phone.message}</p>
+                <p className="text-sm text-destructive">{errors.phone.message}</p>
               )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-[#171717]">
+              <Label htmlFor="email" className="text-foreground">
                 Email
               </Label>
               <Input
                 id="email"
                 type="email"
                 placeholder="name@example.com"
-                className="border-[#e5e5e5] rounded-[0.625rem]"
+                className="border-border rounded-[0.625rem]"
                 {...register('email')}
               />
               {errors.email && (
-                <p className="text-sm text-red-600">{errors.email.message}</p>
+                <p className="text-sm text-destructive">{errors.email.message}</p>
               )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-[#171717]">
+              <Label htmlFor="password" className="text-foreground">
                 Password
               </Label>
               <Input
                 id="password"
                 type="password"
                 placeholder="••••••••"
-                className="border-[#e5e5e5] rounded-[0.625rem]"
+                className="border-border rounded-[0.625rem]"
                 {...register('password')}
               />
               {errors.password && (
-                <p className="text-sm text-red-600">{errors.password.message}</p>
+                <p className="text-sm text-destructive">{errors.password.message}</p>
               )}
             </div>
           </CardContent>
           <CardFooter className="flex flex-col space-y-4">
             <Button
               type="submit"
-              className="w-full bg-[#171717] hover:bg-[#262626] text-white rounded-[0.625rem]"
+              className="w-full rounded-[0.625rem]"
               disabled={isLoading}
             >
               {isLoading ? 'Creating account...' : 'Create account'}
             </Button>
-            <p className="text-sm text-center text-[#737373]">
+            <p className="text-sm text-center text-muted-foreground">
               Already have an account?{' '}
-              <Link href="/login" className="text-[#171717] hover:underline font-medium">
+              <Link href="/login" className="text-foreground hover:underline font-medium">
                 Login
               </Link>
             </p>

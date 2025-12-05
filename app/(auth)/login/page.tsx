@@ -71,7 +71,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex h-screen w-full items-center justify-center bg-neutral-100 px-4 dark:bg-neutral-950">
+    <div className="flex h-screen w-full items-center justify-center bg-background px-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="text-2xl">Login</CardTitle>
@@ -90,7 +90,7 @@ export default function LoginPage() {
                 {...form.register('email')}
               />
               {form.formState.errors.email && (
-                <p className="text-sm text-red-500">
+                <p className="text-sm text-destructive">
                   {form.formState.errors.email.message}
                 </p>
               )}
@@ -103,12 +103,12 @@ export default function LoginPage() {
                 {...form.register('password')}
               />
               {form.formState.errors.password && (
-                <p className="text-sm text-red-500">
+                <p className="text-sm text-destructive">
                   {form.formState.errors.password.message}
                 </p>
               )}
             </div>
-            {error && <p className="text-sm text-red-500">{error}</p>}
+            {error && <p className="text-sm text-destructive">{error}</p>}
             <Button className="w-full" type="submit" disabled={isLoading}>
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Sign in
@@ -116,9 +116,9 @@ export default function LoginPage() {
           </form>
         </CardContent>
         <CardFooter>
-          <p className="text-center text-sm text-neutral-500 dark:text-neutral-400 w-full">
+          <p className="text-center text-sm text-muted-foreground w-full">
             Don&apos;t have an account?{' '}
-            <a href="/signup" className="text-neutral-900 dark:text-neutral-100 hover:underline font-medium">
+            <a href="/signup" className="text-foreground hover:underline font-medium">
               Sign up
             </a>
           </p>
