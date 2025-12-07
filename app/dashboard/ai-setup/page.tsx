@@ -102,6 +102,7 @@ export default function AISetupPage() {
   const [orderCollectionStyle, setOrderCollectionStyle] = useState<'conversational' | 'quick_form'>('quick_form')
   const [quickFormPrompt, setQuickFormPrompt] = useState('দারুণ! অর্ডারটি সম্পন্ন করতে, অনুগ্রহ করে নিচের ফর্ম্যাট অনুযায়ী আপনার তথ্য দিন:\n\nনাম:\nফোন:\nসম্পূর্ণ ঠিকানা:')
   const [quickFormError, setQuickFormError] = useState('দুঃখিত, আমি আপনার তথ্যটি সঠিকভাবে বুঝতে পারিনি। 😔\n\nঅনুগ্রহ করে নিচের ফর্ম্যাটে আবার দিন:\n\nনাম: আপনার নাম\nফোন: 017XXXXXXXX\nঠিকানা: আপনার সম্পূর্ণ ঠিকানা\n\nঅথবা একটি লাইন করে দিতে পারেন:\nআপনার নাম\n017XXXXXXXX\nআপনার সম্পূর্ণ ঠিকানা')
+  const [outOfStockMessage, setOutOfStockMessage] = useState('দুঃখিত! 😔 "{productName}" এখন স্টকে নেই।\n\nআপনি চাইলে অন্য পণ্যের নাম লিখুন বা স্ক্রিনশট পাঠান। আমরা সাহায্য করতে পারবো! 🛍️')
 
   const [advancedOpen, setAdvancedOpen] = useState(false)
 
@@ -161,6 +162,7 @@ export default function AISetupPage() {
           setOrderCollectionStyle(s.order_collection_style || 'conversational')
           setQuickFormPrompt(s.quick_form_prompt || quickFormPrompt)
           setQuickFormError(s.quick_form_error || quickFormError)
+          setOutOfStockMessage(s.out_of_stock_message || outOfStockMessage)
         }
       } catch (error) {
         console.error("Error fetching settings:", error)
@@ -207,6 +209,7 @@ export default function AISetupPage() {
         order_collection_style: orderCollectionStyle,
         quick_form_prompt: quickFormPrompt,
         quick_form_error: quickFormError,
+        out_of_stock_message: outOfStockMessage,
       }
 
       const response = await fetch('/api/settings/ai', {
@@ -275,6 +278,7 @@ export default function AISetupPage() {
     setOrderCollectionStyle('conversational')
     setQuickFormPrompt('দারুণ! অর্ডারটি সম্পন্ন করতে, অনুগ্রহ করে নিচের ফর্ম্যাট অনুযায়ী আপনার তথ্য দিন:\n\nনাম:\nফোন:\nসম্পূর্ণ ঠিকানা:')
     setQuickFormError('দুঃখিত, আমি আপনার তথ্যটি সঠিকভাবে বুঝতে পারিনি। 😔\n\nঅনুগ্রহ করে নিচের ফর্ম্যাটে আবার দিন:\n\nনাম: আপনার নাম\nফোন: 017XXXXXXXX\nঠিকানা: আপনার সম্পূর্ণ ঠিকানা\n\nঅথবা একটি লাইন করে দিতে পারেন:\nআপনার নাম\n017XXXXXXXX\nআপনার সম্পূর্ণ ঠিকানা')
+    setOutOfStockMessage('দুঃখিত! 😔 "{productName}" এখন স্টকে নেই।\n\nআপনি চাইলে অন্য পণ্যের নাম লিখুন বা স্ক্রিনশট পাঠান। আমরা সাহায্য করতে পারবো! 🛍️')
     
     toast.success("Settings reset to default")
   }
@@ -760,6 +764,35 @@ export default function AISetupPage() {
                 <Plus className="h-4 w-4 mr-2" />
                 Add Custom Rule
               </Button>
+            </CardContent>
+          </Card>
+
+          {/* Out of Stock Message */}
+          <Card className="bg-card border border-border shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4" />
+                Out of Stock Message
+              </CardTitle>
+              <CardDescription>
+                Message shown when customer tries to order an out-of-stock product
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <Label htmlFor="out-of-stock-msg">Out of Stock Message</Label>
+                <Textarea
+                  id="out-of-stock-msg"
+                  rows={5}
+                  value={outOfStockMessage}
+                  onChange={(e) => setOutOfStockMessage(e.target.value)}
+                  placeholder="Message when product is out of stock..."
+                  className="mt-1.5"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Use {"{productName}"} to include the product name. Shown when customer clicks "Order Now" or types "order korbo" for an out-of-stock product.
+                </p>
+              </div>
             </CardContent>
           </Card>
         </div>

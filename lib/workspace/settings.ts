@@ -54,6 +54,7 @@ export interface WorkspaceSettings {
   order_collection_style: 'conversational' | 'quick_form';
   quick_form_prompt: string;
   quick_form_error: string;
+  out_of_stock_message: string;
 }
 
 const DEFAULT_SETTINGS: WorkspaceSettings = {
@@ -102,6 +103,7 @@ const DEFAULT_SETTINGS: WorkspaceSettings = {
   order_collection_style: 'conversational',
   quick_form_prompt: 'দারুণ! অর্ডারটি সম্পন্ন করতে, অনুগ্রহ করে নিচের ফর্ম্যাট অনুযায়ী আপনার তথ্য দিন:\n\nনাম:\nফোন:\nসম্পূর্ণ ঠিকানা:',
   quick_form_error: 'দুঃখিত, আমি আপনার তথ্যটি সঠিকভাবে বুঝতে পারিনি। 😔\n\nঅনুগ্রহ করে নিচের ফর্ম্যাটে আবার দিন:\n\nনাম: আপনার নাম\nফোন: 017XXXXXXXX\nঠিকানা: আপনার সম্পূর্ণ ঠিকানা\n\nঅথবা একটি লাইন করে দিতে পারেন:\nআপনার নাম\n017XXXXXXXX\nআপনার সম্পূর্ণ ঠিকানা',
+  out_of_stock_message: 'দুঃখিত! 😔 "{productName}" এখন স্টকে নেই।\n\nআপনি চাইলে অন্য পণ্যের নাম লিখুন বা স্ক্রিনশট পাঠান। আমরা সাহায্য করতে পারবো! 🛍️',
 };
 
 /**
@@ -153,6 +155,7 @@ export async function loadWorkspaceSettings(
       order_collection_style: (settings as any).order_collection_style || DEFAULT_SETTINGS.order_collection_style,
       quick_form_prompt: (settings as any).quick_form_prompt || DEFAULT_SETTINGS.quick_form_prompt,
       quick_form_error: (settings as any).quick_form_error || DEFAULT_SETTINGS.quick_form_error,
+      out_of_stock_message: (settings as any).out_of_stock_message || DEFAULT_SETTINGS.out_of_stock_message,
     };
   } catch (error) {
     console.error('Error loading workspace settings:', error);

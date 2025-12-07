@@ -88,6 +88,7 @@ export async function POST(request: Request) {
       order_collection_style: body.order_collection_style,
       quick_form_prompt: body.quick_form_prompt,
       quick_form_error: body.quick_form_error,
+      out_of_stock_message: body.out_of_stock_message,
       updated_at: new Date().toISOString()
     }
 

@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+// Size stock item schema
+const sizeStockItemSchema = z.object({
+  size: z.string().min(1),
+  quantity: z.number().int().min(0),
+});
+
 /**
  * Schema for creating a new product
  */
@@ -12,6 +18,7 @@ export const createProductSchema = z.object({
   variations: z.record(z.any()).optional(), // JSON object for variations
   colors: z.array(z.string()).optional(),
   sizes: z.array(z.string()).optional(),
+  size_stock: z.array(sizeStockItemSchema).optional(), // NEW: per-size stock tracking
 });
 
 /**
@@ -35,6 +42,16 @@ export type UpdateProductInput = z.infer<typeof updateProductSchema>;
  * @returns Validated product data
  */
 export function validateProductFormData(formData: FormData): CreateProductInput {
+  // Parse size_stock JSON if present
+  let sizeStock;
+  if (formData.get('size_stock')) {
+    try {
+      sizeStock = JSON.parse(formData.get('size_stock') as string);
+    } catch (e) {
+      console.error('Failed to parse size_stock:', e);
+    }
+  }
+
   const data = {
     name: formData.get('name') as string,
     price: parseFloat(formData.get('price') as string),
@@ -52,6 +69,7 @@ export function validateProductFormData(formData: FormData): CreateProductInput 
     sizes: formData.get('sizes')
       ? (formData.get('sizes') as string).split(',').map(s => s.trim()).filter(Boolean)
       : undefined,
+    size_stock: sizeStock,
   };
 
   return createProductSchema.parse(data);
@@ -80,6 +98,13 @@ export function validateProductUpdateFormData(formData: FormData): UpdateProduct
   }
   if (formData.has('sizes')) {
     data.sizes = (formData.get('sizes') as string).split(',').map((s: string) => s.trim()).filter(Boolean);
+  }
+  if (formData.has('size_stock')) {
+    try {
+      data.size_stock = JSON.parse(formData.get('size_stock') as string);
+    } catch (e) {
+      console.error('Failed to parse size_stock:', e);
+    }
   }
 
   return updateProductSchema.parse(data);

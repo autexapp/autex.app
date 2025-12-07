@@ -320,17 +320,64 @@ function handleConfirmingProduct(
     console.log(`🔍 [ORDER_COLLECTION] Style: ${settings?.order_collection_style || 'undefined'}`);
     console.log(`🔍 [ORDER_COLLECTION] Settings object:`, settings ? 'exists' : 'null');
     
+    // Get product from cart to check for sizes/colors/stock
+    const product = context.cart && context.cart.length > 0 ? context.cart[0] : null;
+    const productAny = product as any;
+    
+    // CHECK STOCK FIRST - If out of stock, don't proceed to order flow
+    const totalStock = productAny?.stock_quantity || 0;
+    if (totalStock === 0) {
+      console.log(`❌ [FAST_LANE] Product out of stock: ${productAny?.productName || 'Unknown'}`);
+      const productName = productAny?.productName || 'এই প্রোডাক্ট';
+      const defaultMessage = `দুঃখিত! 😔 "{productName}" এখন স্টকে নেই।\n\nআপনি চাইলে অন্য পণ্যের নাম লিখুন বা স্ক্রিনশট পাঠান। আমরা সাহায্য করতে পারবো! 🛍️`;
+      const outOfStockMessage = (settings?.out_of_stock_message || defaultMessage)
+        .replace('{productName}', productName);
+      return {
+        matched: true,
+        action: 'CONFIRM',
+        response: emoji ? outOfStockMessage : outOfStockMessage.replace(/[😔🛍️]/g, ''),
+        newState: 'IDLE',
+        updatedContext: {
+          state: 'IDLE',
+          cart: [],
+          checkout: {},
+        },
+      };
+    }
+    
     // Fork based on order collection style
     if (settings?.order_collection_style === 'quick_form') {
       console.log('✅ [QUICK_FORM] Activating quick form mode!');
-      // Quick Form: Ask for all details in one message
-      const message = settings.quick_form_prompt || 
+      
+      const availableSizes = productAny?.sizes || productAny?.availableSizes || [];
+      const availableColors = productAny?.colors || productAny?.availableColors || [];
+      const hasSize = availableSizes.length > 0;
+      const hasColor = availableColors.length > 1; // Only ask if multiple colors
+      
+      console.log(`🔍 [QUICK_FORM] Product sizes: ${availableSizes.join(', ') || 'none'}`);
+      console.log(`🔍 [QUICK_FORM] Product colors: ${availableColors.join(', ') || 'none'}`);
+      
+      // Build dynamic prompt based on product variations
+      let dynamicPrompt = settings.quick_form_prompt || 
         'দারুণ! অর্ডারটি সম্পন্ন করতে, অনুগ্রহ করে নিচের ফর্ম্যাট অনুযায়ী আপনার তথ্য দিন:\n\nনাম:\nফোন:\nসম্পূর্ণ ঠিকানা:';
+      
+      // Append size field if product has sizes
+      if (hasSize) {
+        dynamicPrompt += `\nসাইজ: (${availableSizes.join('/')})`;
+      }
+      
+      // Append color field if product has multiple colors
+      if (hasColor) {
+        dynamicPrompt += `\nকালার: (${availableColors.join('/')})`;
+      }
+      
+      // Add optional quantity field
+      dynamicPrompt += '\nপরিমাণ: (1 হলে লিখতে হবে না)';
       
       return {
         matched: true,
         action: 'CONFIRM',
-        response: emoji ? message : message.replace(/[🎉😊📱📍✅]/g, ''),
+        response: emoji ? dynamicPrompt : dynamicPrompt.replace(/[🎉😊📱📍✅]/g, ''),
         newState: 'AWAITING_CUSTOMER_DETAILS',
         updatedContext: {
           ...context,
@@ -912,14 +959,25 @@ function generateOrderSummary(
   address: string,
   deliveryCharge: number,
   totalAmount: number,
-  phone?: string
+  phone?: string,
+  selectedSize?: string,
+  selectedColor?: string
 ): string {
   const cartTotal = calculateCartTotal(cart);
   
+  // Build product info with size/color from cart item
   const itemsList = cart
     .map((item, idx) => {
       const itemTotal = item.productPrice * item.quantity;
-      return `${idx + 1}. ${item.productName} \n   ৳${item.productPrice} × ${item.quantity} = ৳${itemTotal}`;
+      const itemAny = item as any;
+      const size = selectedSize || itemAny.selectedSize || itemAny.variations?.size;
+      const color = selectedColor || itemAny.selectedColor || itemAny.variations?.color;
+      
+      let productLine = `${idx + 1}. ${item.productName}`;
+      if (size) productLine += `\n   📏 Size: ${size}`;
+      if (color) productLine += `\n   🎨 Color: ${color}`;
+      productLine += `\n   ৳${item.productPrice} × ${item.quantity} = ৳${itemTotal}`;
+      return productLine;
     })
     .join('\n\n');
   
@@ -929,7 +987,7 @@ function generateOrderSummary(
 👤 Name: ${customerName}
 ${phone ? `📱 Phone: ${phone}\n` : ''}📍 Address: ${address}
 
-🛍️ Items:
+🛍️ Product:
 ${itemsList}
 
 💰 Pricing:
@@ -989,7 +1047,7 @@ function handleCollectingPaymentDigits(
 
 /**
  * Handles AWAITING_CUSTOMER_DETAILS state (Quick Form mode)
- * Parses name, phone, and address from a single customer message
+ * Parses name, phone, address, size, and color from a single customer message
  * Uses multi-strategy parsing for flexibility
  */
 function handleAwaitingCustomerDetails(
@@ -1003,15 +1061,32 @@ function handleAwaitingCustomerDetails(
   let name: string | null = null;
   let phone: string | null = null;
   let address: string | null = null;
+  let size: string | null = null;
+  let color: string | null = null;
+  let quantity: number = 1; // Default to 1
   
-  // STRATEGY 1: Try labeled format (নাম:, Name:, etc.)
+  // Get product info from context to check if size/color is needed
+  const product = context.cart && context.cart.length > 0 ? context.cart[0] : null;
+  const productAny = product as any;
+  const availableSizes = productAny?.sizes || productAny?.availableSizes || [];
+  const availableColors = productAny?.colors || productAny?.availableColors || [];
+  const requiresSize = availableSizes.length > 0;
+  const requiresColor = availableColors.length > 1; // Only ask for color if multiple options
+  
+  // STRATEGY 1: Try labeled format (নাম:, Name:, সাইজ:, Size:, পরিমাণ:, Quantity:, etc.)
   const nameMatch = text.match(/(?:নাম|Name)\s*[:\-]\s*([^\n]+)/i);
   const phoneMatch = text.match(/(?:ফোন|Phone|Mobile|মোবাইল)\s*[:\-]\s*([^\n]+)/i);
-  const addressMatch = text.match(/(?:ঠিকানা|Address)\s*[:\-]\s*([\s\S]+?)(?=(?:নাম|Name|ফোন|Phone|$))/i);
+  const addressMatch = text.match(/(?:ঠিকানা|Address)\s*[:\-]\s*([\s\S]+?)(?=(?:নাম|Name|ফোন|Phone|সাইজ|Size|কালার|Color|পরিমাণ|Quantity|$))/i);
+  const sizeMatch = text.match(/(?:সাইজ|Size|Saiz)\s*[:\-]\s*([^\n]+)/i);
+  const colorMatch = text.match(/(?:কালার|Color|Kalar|রং)\s*[:\-]\s*([^\n]+)/i);
+  const quantityMatch = text.match(/(?:পরিমাণ|Quantity|Qty|সংখ্যা)\s*[:\-]\s*(\d+)/i);
   
   if (nameMatch) name = nameMatch[1].trim();
   if (phoneMatch) phone = phoneMatch[1].trim();
   if (addressMatch) address = addressMatch[1].trim();
+  if (sizeMatch) size = sizeMatch[1].trim().toUpperCase();
+  if (colorMatch) color = colorMatch[1].trim();
+  if (quantityMatch) quantity = parseInt(quantityMatch[1]) || 1;
   
   // STRATEGY 2: If labeled parsing failed, try positional parsing
   if (!name || !phone || !address) {
@@ -1028,8 +1103,51 @@ function handleAwaitingCustomerDetails(
         if (phoneIndex > 0 && !name) {
           name = lines[0];
         }
+        // Address is everything after phone (excluding size/color if at end)
         if (phoneIndex < lines.length - 1 && !address) {
-          address = lines.slice(phoneIndex + 1).join('\n');
+          const remainingLines = lines.slice(phoneIndex + 1);
+          
+          // Check last few lines for size, color, and quantity (in any order)
+          // Work backwards from the end
+          for (let i = remainingLines.length - 1; i >= 0 && i >= remainingLines.length - 4; i--) {
+            const line = remainingLines[i];
+            if (!line) continue;
+            
+            const lineLower = line.toLowerCase();
+            const lineUpper = line.toUpperCase();
+            
+            // Check if it's a size FIRST (specific patterns: XS, S, M, L, XL, XXL, XXXL, or 28-48)
+            const isSizePattern = /^(xs|s|m|l|xl|xxl|xxxl)$/i.test(line);
+            const isTwoDigitSize = /^(2[8-9]|3[0-9]|4[0-8])$/.test(line); // Sizes 28-48
+            if (!size && (isSizePattern || isTwoDigitSize)) {
+              size = lineUpper;
+              remainingLines.splice(i, 1);
+              continue;
+            }
+            
+            // Check if it's a quantity (pure number 2-999, but NOT a size pattern)
+            // Matches: 2-9, 10-99, 100-999 (both Arabic and Bengali numerals)
+            const isQuantityPattern = /^[২-৯]$|^[2-9]$|^[১-৯][০-৯]$|^[1-9][0-9]$|^[১-৯][০-৯]{2}$|^[1-9][0-9]{2}$/.test(line);
+            if (quantity === 1 && isQuantityPattern && !isTwoDigitSize) {
+              // Convert Bengali numerals to Arabic
+              const convertedNum = line.replace(/[০-৯]/g, (d) => String('০১২৩৪৫৬৭৮৯'.indexOf(d)));
+              quantity = parseInt(convertedNum) || 1;
+              remainingLines.splice(i, 1);
+              continue;
+            }
+            
+            // Check if it's a color (matches available colors)
+            const matchedColor = availableColors.find((c: string) => 
+              c.toLowerCase() === lineLower
+            );
+            if (!color && matchedColor) {
+              color = capitalizeWords(line);
+              remainingLines.splice(i, 1);
+              continue;
+            }
+          }
+          
+          address = remainingLines.join('\n');
         }
       } else {
         if (!name) name = lines[0];
@@ -1053,22 +1171,95 @@ function handleAwaitingCustomerDetails(
   }
   const isPhoneValid = phone ? PHONE_PATTERNS.some(p => p.test(phone)) : false;
   
-  // SUCCESS: All fields extracted and phone is valid
-  if (name && isPhoneValid && address) {
+  // Validate size if required
+  const isSizeValid = !requiresSize || (size && availableSizes.some((s: string) => 
+    s.toUpperCase() === size?.toUpperCase()
+  ));
+  
+  // Validate color if required  
+  const isColorValid = !requiresColor || (color && availableColors.some((c: string) => 
+    c.toLowerCase() === color?.toLowerCase()
+  ));
+  
+  // Validate stock for selected size
+  let stockAvailable = 999; // Default high value if no size_stock
+  let stockError: string | null = null;
+  
+  if (size && productAny?.size_stock && Array.isArray(productAny.size_stock)) {
+    const sizeStock = productAny.size_stock.find((ss: any) => 
+      ss.size?.toUpperCase() === size.toUpperCase()
+    );
+    if (sizeStock) {
+      stockAvailable = sizeStock.quantity || 0;
+      if (quantity > stockAvailable) {
+        stockError = stockAvailable === 0 
+          ? `দুঃখিত! "${size}" সাইজ এখন স্টকে নেই। অন্য সাইজ বেছে নিন।`
+          : `দুঃখিত! "${size}" সাইজে মাত্র ${stockAvailable} পিস আছে। আপনি সর্বোচ্চ ${stockAvailable} পিস অর্ডার করতে পারবেন।`;
+      }
+    }
+  } else if (productAny && quantity > (productAny.stock_quantity || 0)) {
+    // Fallback to total stock if no size_stock
+    stockAvailable = productAny.stock_quantity || 0;
+    if (stockAvailable === 0) {
+      stockError = `দুঃখিত! এই প্রোডাক্ট এখন স্টকে নেই।`;
+    } else {
+      stockError = `দুঃখিত! এই প্রোডাক্টে মাত্র ${stockAvailable} পিস আছে। আপনি সর্বোচ্চ ${stockAvailable} পিস অর্ডার করতে পারবেন।`;
+    }
+  }
+  
+  // Return error if stock is insufficient
+  if (stockError) {
+    return {
+      matched: true,
+      action: 'CONFIRM',
+      response: emoji ? `❌ ${stockError}` : stockError,
+      newState: 'AWAITING_CUSTOMER_DETAILS',
+      updatedContext: {
+        ...context,
+        state: 'AWAITING_CUSTOMER_DETAILS',
+      },
+    };
+  }
+  
+  // SUCCESS: All required fields extracted and valid
+  if (name && isPhoneValid && address && isSizeValid && isColorValid) {
     const deliveryCharge = address.toLowerCase().includes('dhaka') || address.toLowerCase().includes('ঢাকা')
       ? (settings?.deliveryCharges?.insideDhaka || 60)
       : (settings?.deliveryCharges?.outsideDhaka || 120);
     
-    const cartTotal = calculateCartTotal(context.cart);
+    // Update cart with selected size/color and quantity
+    const updatedCart = context.cart.map((item, idx) => {
+      if (idx === 0) {
+        return {
+          ...item,
+          quantity: quantity, // Use parsed quantity
+          variations: {
+            ...(item as any).variations,
+            size: size || undefined,
+            color: color || undefined,
+          },
+          selectedSize: size || undefined,
+          selectedColor: color || undefined,
+        };
+      }
+      return item;
+    });
+    
+    // Recalculate total with quantity
+    const cartTotal = updatedCart.reduce((sum, item) => {
+      return sum + (item.productPrice * item.quantity);
+    }, 0);
     const totalAmount = cartTotal + deliveryCharge;
     
     const orderSummary = generateOrderSummary(
       name,
-      context.cart,
+      updatedCart,
       address,
       deliveryCharge,
       totalAmount,
-      phone || undefined
+      phone || undefined,
+      size || undefined,
+      color || undefined
     );
     
     return {
@@ -1079,35 +1270,65 @@ function handleAwaitingCustomerDetails(
       updatedContext: {
         ...context,
         state: 'CONFIRMING_ORDER',
+        cart: updatedCart,
         checkout: {
           ...context.checkout,
-          customerName: name,
-          customerPhone: phone,
-          customerAddress: address,
+          customerName: name || undefined,
+          customerPhone: phone || undefined,
+          customerAddress: address || undefined,
           deliveryCharge,
           totalAmount,
         },
-        customerName: name,
-        customerPhone: phone,
-        customerAddress: address,
+        customerName: name || undefined,
+        customerPhone: phone || undefined,
+        customerAddress: address || undefined,
         deliveryCharge,
         totalAmount,
+        // Store selected variations for order creation
+        selectedSize: size || undefined,
+        selectedColor: color || undefined,
       },
     };
   }
   
-  // FAILURE: Log and re-prompt
+  // FAILURE: Log and build specific error message
   console.log(`[QUICK_FORM_PARSE_FAILURE] Conversation: ${context.metadata?.startedAt || 'unknown'}`);
   console.log(`Input: "${text}"`);
   console.log(`Parsed - Name: ${name || 'null'}, Phone: ${phone || 'null'} (valid: ${isPhoneValid}), Address: ${address || 'null'}`);
+  console.log(`Parsed - Size: ${size || 'null'} (valid: ${isSizeValid}), Color: ${color || 'null'} (valid: ${isColorValid})`);
   
-  const errorMsg = settings?.quick_form_error || 
-    `দুঃখিত, আমি আপনার তথ্যটি সঠিকভাবে বুঝতে পারিনি। ${emoji ? '😔' : ''}\n\nঅনুগ্রহ করে নিচের ফর্ম্যাটে আবার দিন:\n\nনাম: আপনার নাম\nফোন: 017XXXXXXXX\nঠিকানা: আপনার সম্পূর্ণ ঠিকানা\n\nঅথবা একটি লাইন করে দিতে পারেন:\nআপনার নাম\n017XXXXXXXX\nআপনার সম্পূর্ণ ঠিকানা`;
+  // Build specific error message based on what's missing
+  let missingFields = [];
+  if (!name) missingFields.push('নাম');
+  if (!isPhoneValid) missingFields.push('সঠিক ফোন নম্বর');
+  if (!address) missingFields.push('ঠিকানা');
+  if (requiresSize && !isSizeValid) missingFields.push(`সাইজ (${availableSizes.join('/')})`);
+  if (requiresColor && !isColorValid) missingFields.push(`কালার (${availableColors.join('/')})`);
+  
+  let errorMsg = settings?.quick_form_error || 
+    `দুঃখিত, আমি আপনার তথ্যটি সঠিকভাবে বুঝতে পারিনি। ${emoji ? '😔' : ''}`;
+  
+  // Add specific missing fields
+  if (missingFields.length > 0) {
+    errorMsg += `\n\n❌ Missing: ${missingFields.join(', ')}`;
+  }
+  
+  // Build format example
+  let formatExample = `\n\nঅনুগ্রহ করে নিচের ফর্ম্যাটে আবার দিন:\n\nনাম: আপনার নাম\nফোন: 017XXXXXXXX\nঠিকানা: আপনার সম্পূর্ণ ঠিকানা`;
+  
+  if (requiresSize) {
+    formatExample += `\nসাইজ: ${availableSizes.join('/')}`;
+  }
+  if (requiresColor) {
+    formatExample += `\nকালার: ${availableColors.join('/')}`;
+  }
+  
+  errorMsg += formatExample;
   
   return {
     matched: true,
     action: 'CONFIRM',
-    response: emoji ? errorMsg : errorMsg.replace(/😔/g, ''),
+    response: emoji ? errorMsg : errorMsg.replace(/😔|❌/g, ''),
     newState: 'AWAITING_CUSTOMER_DETAILS',
     updatedContext: {
       ...context,

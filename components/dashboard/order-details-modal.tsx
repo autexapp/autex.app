@@ -33,8 +33,12 @@ interface Order {
   // Joined product data from API
   products?: {
     name: string
+    image_urls?: string[]
   }
   payment_last_two_digits?: string
+  // NEW: Direct size/color fields
+  selected_size?: string
+  selected_color?: string
   // Legacy fields for backward compatibility
   customer?: {
     name: string
@@ -167,9 +171,9 @@ export function OrderDetailsModal({ order, open, onClose }: OrderDetailsModalPro
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="flex items-center gap-3">
-                {order.product_image_url ? (
+                {(order.product_image_url || order.products?.image_urls?.[0]) ? (
                   <img
-                    src={order.product_image_url}
+                    src={order.product_image_url || order.products?.image_urls?.[0]}
                     alt={productName}
                     className="h-12 w-12 rounded-lg object-cover"
                   />
@@ -181,9 +185,11 @@ export function OrderDetailsModal({ order, open, onClose }: OrderDetailsModalPro
                 <div className="flex-1">
                   <p className="font-medium">{productName}</p>
                   <p className="text-xs text-muted-foreground">
-                    {order.product_variations?.size && `Size: ${order.product_variations.size}`}
-                    {order.product_variations?.color && `${order.product_variations?.size ? ', ' : ''}Color: ${order.product_variations.color}`}
-                    {!order.product_variations?.size && !order.product_variations?.color && 'No variations'}
+                    {(order.selected_size || order.product_variations?.size) && 
+                      `📏 Size: ${order.selected_size || order.product_variations.size}`}
+                    {(order.selected_color || order.product_variations?.color) && 
+                      `${(order.selected_size || order.product_variations?.size) ? '  •  ' : ''}🎨 Color: ${order.selected_color || order.product_variations.color}`}
+                    {!order.selected_size && !order.selected_color && !order.product_variations?.size && !order.product_variations?.color && 'No variations'}
                   </p>
                 </div>
                 <p className="font-mono">

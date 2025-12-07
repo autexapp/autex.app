@@ -31,13 +31,14 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 404 })
     }
 
-    // Build query - join with products table to get product name
+    // Build query - join with products table to get product name and image
     let query = supabase
       .from('orders')
       .select(`
         *,
         products (
-          name
+          name,
+          image_urls
         )
       `, { count: 'exact' })
       .eq('workspace_id', workspace.id)

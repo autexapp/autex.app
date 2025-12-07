@@ -3316,6 +3316,70 @@ Focused on polishing the user experience, enhancing the dashboard with real-time
 - `components/skeletons/*.tsx` (8 new files)
 - `app/dashboard/**/loading.tsx` (8 new/modified files)
 - `app/dashboard/admin/page.tsx`
+
+
+## Day 7: UI/UX Refinements & Feature Enhancements (2025-12-05)
+
+### Overview
+Focused on polishing the user experience, enhancing the dashboard with real-time features, and implementing critical business tools like the Admin Dashboard and Manual Chat.
+
+### Features Implemented
+
+#### 1. Skeleton Loaders (Performance UX)
+- **Objective**: Replace generic spinners with skeleton loaders for a smoother perceived loading experience.
+- **Implementation**:
+    - Created reusable skeleton components: `DashboardSkeleton`, `OrdersSkeleton`, `ProductsSkeleton`, `ConversationsSkeleton`, `AISetupSkeleton`, `SettingsSkeleton`, `AnalyticsSkeleton`, `AdminSkeleton`.
+    - Integrated into `loading.tsx` and `page.tsx` for all dashboard routes.
+    - Updated `layout.tsx` to use `DashboardSkeleton` for global loading.
+- **Result**: Eliminated layout shifts and provided a premium, app-like feel during data fetching.
+
+#### 2. Admin AI Usage Dashboard
+- **Objective**: Track and visualize OpenAI usage costs.
+- **Implementation**:
+    - Created `app/dashboard/admin/page.tsx` with charts and stats.
+    - Visualizes total investment, cost per call, and cost distribution by feature (Tier 3, Auto-tagging, etc.).
+    - Uses `Recharts` for interactive area and pie charts.
+    - Converts USD costs to BDT for local relevance.
+
+#### 3. Manual Chat / Human Takeover
+- **Objective**: Allow sellers to intervene in bot conversations.
+- **Implementation**:
+    - Added "Manual Chat" interface in `app/dashboard/conversations`.
+    - Implemented `POST /api/conversations/send` to send messages as the page via Graph API.
+    - Added real-time polling to show customer replies instantly.
+    - Optimistic UI updates for immediate feedback.
+
+#### 4. Embedded Chat Widget (Test Mode)
+- **Objective**: Enable safe bot testing without using personal Facebook accounts.
+- **Implementation**:
+    - Created `TestChatWidget` in `app/dashboard/ai-setup`.
+    - Simulates the full bot lifecycle (Fast Lane, AI Director, Order Flow).
+    - Uses `is_test` flag to isolate test data from production analytics.
+    - Supports image uploads and product card interactions.
+
+#### 5. Static Pages & Legal Compliance
+- **Objective**: Add necessary legal pages for the application.
+- **Implementation**:
+    - Created `app/privacy-policy/page.tsx` and `app/terms/page.tsx`.
+    - Styled to match the landing page branding.
+
+#### 6. Pricing & Landing Page Enhancements
+- **Objective**: Optimize the pricing section for conversion.
+- **Implementation**:
+    - Updated pricing models (Starter, Pro, Business).
+    - Added "Founder Offer" with special pricing.
+    - Enhanced UI with animated gradients and pulsing effects for the Pro plan.
+
+#### 7. Bug Fixes & Refinements
+- **Order Quantity Bug**: Fixed issue where AI incorrectly set order quantity to 2.
+- **Build Errors**: Resolved `colorthief` and `mini-css-extract-plugin` build issues.
+- **Settings Page Artifacts**: Cleaned up placeholder text and fixed Notifications tab logic.
+- **Search Functionality**: Made search bars interactive across Overview, Orders, and Products pages.
+
+### Files Created/Modified
+- `components/skeletons/*.tsx` (8 new files)
+- `app/dashboard/**/loading.tsx` (8 new/modified files)
+- `app/dashboard/admin/page.tsx`
 - `app/dashboard/conversations/page.tsx`
 - `app/privacy-policy/page.tsx`
 - `app/terms/page.tsx`
@@ -3326,3 +3390,310 @@ Focused on polishing the user experience, enhancing the dashboard with real-time
 - **Operational Visibility**: Admin dashboard provides crucial insights into AI costs.
 - **Hybrid Support**: Manual chat enables a seamless mix of AI automation and human support.
 - **Testability**: Embedded widget allows rapid iteration on bot logic without external dependencies.
+
+---
+
+## Day 12: Size & Color Tracking System
+
+### Overview
+Implemented comprehensive size and color tracking for products and orders. This enables sellers to manage inventory per size and allows customers to specify their preferred size and color during the order process.
+
+### ✅ Completed Features (7 Prompts)
+
+#### PROMPT 1-2: Database Migrations
+- **`migrations/add_size_color_to_orders.sql`**:
+  - Added `selected_size` (TEXT) column to orders table
+  - Added `selected_color` (TEXT) column to orders table
+  - Added `size_stock_id` (UUID) for future size-specific stock tracking
+  
+- **`migrations/add_size_stock_to_products.sql`**:
+  - Added `size_stock` (JSONB) column for per-size stock quantities
+  - Added `requires_size_selection` (BOOLEAN) column
+  - Auto-migrates existing `sizes` array to `size_stock` format
+
+#### PROMPT 3: Helper Functions
+- **`lib/products/size-stock.ts`** - NEW:
+  - `getSizesFromStock()` - Extract sizes from size_stock JSONB
+  - `getStockForSize()` - Get quantity for a specific size
+  - `isSizeAvailable()` - Check if size is in stock
+  - `getAvailableSizes()` - Get all sizes with stock > 0
+  - `getTotalStock()` - Sum all size quantities
+
+#### PROMPT 4: Quick Form Enhancement
+- **`lib/conversation/fast-lane.ts`**:
+  - Dynamic prompt building: If product has sizes/colors, they're automatically appended to the Quick Form prompt
+  - Multi-strategy parsing: Detects size/color from labeled format (`সাইজ: M`) or positional format (last lines)
+  - Smart detection: Works backwards through last 2 lines, finds size and color in any order
+  - Case-insensitive color matching: "Blue" matches "blue"
+  - Validation: Ensures selected size/color exist in product's available options
+
+#### PROMPT 5: Order Creation & Display
+- **`lib/conversation/orchestrator.ts`**:
+  - Saves `selected_size` and `selected_color` to orders table
+  - Includes sizes/colors in cart items for validation
+  
+- **`components/dashboard/order-details-modal.tsx`**:
+  - Displays 📏 Size and 🎨 Color with emojis
+  - Checks both new `selected_size` field and legacy `product_variations.size`
+
+#### PROMPT 6: Product Form with Size Stock UI
+- **`components/products/product-form.tsx`** - Complete Rewrite:
+  - Quick-add buttons for common sizes (XS, S, M, L, XL, XXL, XXXL)
+  - Dynamic size stock table with quantity input per size
+  - Custom size input for non-standard sizes (e.g., "42", "Free")
+  - Auto-calculated total stock from size quantities
+  - Delete button per size entry
+  
+- **`lib/validations/product.ts`**:
+  - Added `size_stock` validation schema
+  - Parse size_stock JSON from FormData
+  
+- **API Updates**:
+  - `app/api/products/route.ts` - Saves size_stock to database
+  - `app/api/products/[id]/route.ts` - Updates size_stock on edit
+
+#### PROMPT 7: Product Details Modal
+- **`components/dashboard/product-details-modal.tsx`** - NEW:
+  - Shows product image, name, price, description, category
+  - **Size stock table** with stock per size
+  - ⚠️ Low stock warning (< 5 pcs) in yellow
+  - ❌ Out of stock indicator in red
+  - Total stock sum at footer
+  
+- **`app/dashboard/products/page.tsx`**:
+  - Click product image to view details (hover shows eye icon)
+  - Integrated ProductDetailsModal component
+
+#### Webhook Fix: Order Now Button
+- **`app/api/webhooks/facebook/route.ts`**:
+  - Fixed "Order Now" button to include sizes/colors in cart
+  - Dynamic Quick Form prompt: Appends size/color fields based on product
+
+### TypeScript Types Updated
+- **`types/supabase.ts`**: Added `selected_size`, `selected_color`, `size_stock_id` to orders, and `size_stock`, `requires_size_selection` to products
+- **`types/conversation.ts`**: Added `sizes`, `colors`, `selectedSize`, `selectedColor` to CartItem interface
+
+### Files Created
+- `migrations/add_size_color_to_orders.sql`
+- `migrations/add_size_stock_to_products.sql`
+- `lib/products/size-stock.ts`
+- `components/dashboard/product-details-modal.tsx`
+
+### Files Modified
+- `components/products/product-form.tsx` (major rewrite)
+- `lib/conversation/fast-lane.ts` (size/color parsing)
+- `lib/conversation/orchestrator.ts` (order creation)
+- `lib/validations/product.ts` (size_stock validation)
+- `app/api/products/route.ts` (size_stock support)
+- `app/api/products/[id]/route.ts` (size_stock update)
+- `app/api/webhooks/facebook/route.ts` (Order Now button fix)
+- `app/dashboard/products/page.tsx` (details modal integration)
+- `components/dashboard/order-details-modal.tsx` (display size/color)
+- `types/supabase.ts` (new fields)
+- `types/conversation.ts` (CartItem extensions)
+
+### Order Summary Format
+The new order summary now shows size and color under the product:
+```
+📦 Order Summary
+━━━━━━━━━━━━━━━━━━━━
+
+👤 Name: Zayed Bin Hamid
+📱 Phone: 01977994057
+📍 Address: Keshabpur, Jashore
+
+🛍️ Product:
+1. Arjo Pant
+   📏 Size: L
+   🎨 Color: Blue
+   ৳1,200 × 1 = ৳1,200
+
+💰 Pricing:
+• Subtotal: ৳1,200
+• Delivery: ৳120
+• Total: ৳1,320
+
+━━━━━━━━━━━━━━━━━━━━
+Confirm this order? (YES/NO) ✅
+```
+
+### Technical Achievements
+- **Dynamic Prompts**: Quick Form automatically includes size/color based on product configuration
+- **Flexible Parsing**: Supports both labeled and positional input formats
+- **Case-Insensitive**: Color matching works regardless of case (Blue → blue)
+- **Backward Compatible**: Works with existing products that don't have size_stock defined
+- **Total Stock Calculation**: Auto-calculates from sum of all size quantities
+- **Low Stock Warnings**: Visual indicators for inventory management
+
+---
+
+## Day 12 (Part 2): Quantity Support & Inventory Management
+
+### Overview
+Extended the Quick Form to support quantity ordering with automatic inventory validation and stock deduction.
+
+### ✅ Completed Features
+
+#### 1. Quantity in Quick Form
+- **Prompt Updated**: Now includes `পরিমাণ: (1 হলে লিখতে হবে না)` - quantity is optional, skip if ordering 1
+- **Labeled Parsing**: Detects `পরিমাণ: 5` or `Quantity: 5`
+- **Positional Parsing**: Detects standalone numbers 2-999 at end of input
+- **Bengali Numeral Support**: Converts `১০০` → 100
+- **Smart Size/Quantity Separation**: Sizes 28-48 are treated as sizes, not quantities
+
+#### 2. Stock Validation Per Size
+- **Pre-Order Check**: Before creating order, validates if requested quantity is available
+- **Size-Specific Validation**: If ordering M size with qty 100 but only 15 in stock, shows error:
+  ```
+  ❌ দুঃখিত! "M" সাইজে মাত্র 15 পিস আছে। আপনি সর্বোচ্চ 15 পিস অর্ডার করতে পারবেন।
+  ```
+- **Fallback to Total Stock**: If no size_stock defined, validates against total stock_quantity
+
+#### 3. Automatic Stock Deduction
+- **On Order Confirmation**: Stock is automatically reduced after order is created
+- **Size-Specific Deduction**: If ordering M size, only M stock is reduced
+- **Total Stock Update**: Recalculates total stock from sum of all size quantities
+- **Console Logging**: `📉 Stock deducted: M -3 (new total: 12)`
+- **Error Resilient**: If stock update fails, order is still created (logged as warning)
+
+#### 4. Cart Item Enhancements
+- Added `size_stock` and `stock_quantity` to cart items in:
+  - `app/api/webhooks/facebook/route.ts` (Order Now button)
+  - `lib/conversation/orchestrator.ts` (image recognition flow)
+
+### Bug Fix: Order Details Modal Image
+- **Issue**: Product image was showing placeholder in Order Details Modal
+- **Root Cause**: API wasn't fetching `image_urls` from products table
+- **Fix**: 
+  - Updated `app/api/orders/route.ts` to include `image_urls` in products join
+  - Updated `components/dashboard/order-details-modal.tsx` to use fallback: `product_image_url || products?.image_urls?.[0]`
+
+### Files Modified
+- `lib/conversation/fast-lane.ts` (quantity parsing, stock validation)
+- `lib/conversation/orchestrator.ts` (stock deduction, cart item stock info)
+- `app/api/webhooks/facebook/route.ts` (cart item with stock info, quantity prompt)
+- `app/api/orders/route.ts` (include image_urls in join)
+- `components/dashboard/order-details-modal.tsx` (image fallback fix)
+
+### Order Summary Format (Updated with Quantity)
+```
+📦 Order Summary
+━━━━━━━━━━━━━━━━━━━━
+
+👤 Name: Zayed Bin Hamid
+📱 Phone: 01977994057
+📍 Address: Keshabpur, Jashore
+
+🛍️ Product:
+1. Panjabi
+   📏 Size: M
+   🎨 Color: Red
+   ৳1,500 × 5 = ৳7,500   ← Quantity multiplied!
+
+💰 Pricing:
+• Subtotal: ৳7,500
+• Delivery: ৳120
+• Total: ৳7,620
+
+━━━━━━━━━━━━━━━━━━━━
+Confirm this order? (YES/NO) ✅
+```
+
+### Technical Achievements
+- **Complete Inventory Flow**: Order → Validate Stock → Create Order → Deduct Stock
+- **Multi-Format Quantity**: Supports Arabic (100) and Bengali (১০০) numerals
+- **Graceful Degradation**: Works even without size_stock (falls back to total stock)
+- **Dashboard Restocking**: Sellers can edit product sizes/quantities via Product Form
+
+---
+
+## Day 12 (Part 3): Out-of-Stock Early Detection
+
+### Overview
+Added proactive out-of-stock detection at the earliest point in the order flow. If a product has 0 stock, the bot immediately informs the customer WITHOUT asking for their details first.
+
+### ✅ Completed Features
+
+#### 1. Out-of-Stock Check on "Order Now" Button
+- **Location**: `app/api/webhooks/facebook/route.ts`
+- **Trigger**: Customer clicks "Order Now" button on product card
+- **Check**: If `stock_quantity === 0`, immediately send message
+- **Message**:
+  ```
+  দুঃখিত! 😔 "Panjabi" এখন স্টকে নেই।
+  
+  আপনি চাইলে অন্য পণ্যের নাম লিখুন বা স্ক্রিনশট পাঠান। আমরা সাহায্য করতে পারবো! 🛍️
+  ```
+- **Behavior**: Does NOT proceed to ask for customer details
+
+#### 2. Out-of-Stock Check on Typed Confirmation
+- **Location**: `lib/conversation/fast-lane.ts`
+- **Trigger**: Customer types "order korbo", "yes", "হ্যা", etc.
+- **Check**: If cart product has `stock_quantity === 0`, show message
+- **Message**: Same as above
+- **Behavior**: Clears cart, resets state to IDLE
+
+### Bug Fix: Quantity Input Leading Zeros
+- **Issue**: In Product Form, backspacing quantity left "0" and typing "15" became "015"
+- **Fix**: Made input show empty when value is 0, use placeholder instead
+- **Location**: `components/products/product-form.tsx`
+
+### Files Modified
+- `app/api/webhooks/facebook/route.ts` (Order Now stock check)
+- `lib/conversation/fast-lane.ts` (Fast Lane stock check)
+- `components/products/product-form.tsx` (quantity input fix)
+
+### User Experience Flow
+```
+Customer: [sends screenshot of out-of-stock product]
+Bot: [shows product card with Order Now button]
+Customer: [clicks Order Now OR types "order korbo"]
+Bot: দুঃখিত! 😔 "Panjabi" এখন স্টকে নেই।
+     আপনি চাইলে অন্য পণ্যের নাম লিখুন বা স্ক্রিনশট পাঠান...
+```
+
+---
+
+## Day 12 (Part 4): Customizable Out-of-Stock Message
+
+### Overview
+Made the out-of-stock message customizable per business owner via the AI Setup page.
+
+### ✅ Completed Features
+
+#### 1. New Database Column
+- Added `out_of_stock_message` column to `workspace_settings` table
+- Default message: `দুঃখিত! 😔 "{productName}" এখন স্টকে নেই।...`
+- Migration: `migrations/add_out_of_stock_message.sql`
+
+#### 2. AI Setup Page UI
+- New "Out of Stock Message" card with AlertTriangle icon
+- Textarea to customize the message
+- Uses `{productName}` placeholder for dynamic product name insertion
+
+#### 3. Multi-Tenancy Support
+- Each business owner can have their own custom out-of-stock message
+- Message is cached per workspace for performance
+- Cache is invalidated when settings are saved
+
+### Files Modified
+- `lib/workspace/settings.ts` (added out_of_stock_message to interface/defaults)
+- `app/dashboard/ai-setup/page.tsx` (new UI card for the setting)
+- `app/api/settings/ai/route.ts` (save/load the new field)
+- `lib/conversation/fast-lane.ts` (use customizable message)
+- `app/api/webhooks/facebook/route.ts` (use customizable message)
+
+### Database Schema Updates
+```sql
+-- workspace_settings
+out_of_stock_message text DEFAULT 'দুঃখিত! 😔 "{productName}" এখন স্টকে নেই।...'
+
+-- products
+size_stock jsonb DEFAULT '[]'::jsonb
+requires_size_selection boolean DEFAULT true
+
+-- orders
+selected_size text
+selected_color text
+size_stock_id text
+```

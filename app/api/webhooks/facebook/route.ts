@@ -156,7 +156,7 @@ async function processMessagingEvent(
           .single();
         
         if (product) {
-          // Load workspace settings to check order collection style
+          // Load workspace settings first
           const { data: fbPage } = await supabase
             .from('facebook_pages')
             .select('workspace_id')
@@ -168,12 +168,42 @@ async function processMessagingEvent(
           const { getCachedSettings } = await import('@/lib/workspace/settings-cache');
           const settings = await getCachedSettings(fbPage.workspace_id);
           
+          // CHECK STOCK FIRST - If out of stock, don't proceed to order flow
+          const totalStock = product.stock_quantity || 0;
+          
+          if (totalStock === 0) {
+            console.log(`❌ [ORDER_PRODUCT] Product out of stock: ${product.name}`);
+            const { sendMessage } = await import('@/lib/facebook/messenger');
+            const defaultMessage = `দুঃখিত! 😔 "{productName}" এখন স্টকে নেই।\n\nআপনি চাইলে অন্য পণ্যের নাম লিখুন বা স্ক্রিনশট পাঠান। আমরা সাহায্য করতে পারবো! 🛍️`;
+            const outOfStockMessage = (settings.out_of_stock_message || defaultMessage)
+              .replace('{productName}', product.name);
+            await sendMessage(pageId, customerPsid, outOfStockMessage);
+            return;
+          }
+          
           // Determine state and message based on order collection style
           const isQuickForm = settings.order_collection_style === 'quick_form';
           const targetState = isQuickForm ? 'AWAITING_CUSTOMER_DETAILS' : 'COLLECTING_NAME';
          
           console.log(`🔍 [ORDER_PRODUCT] Order collection style: ${settings.order_collection_style}`);
           console.log(`🔍 [ORDER_PRODUCT] Target state: ${targetState}`);
+          console.log(`🔍 [ORDER_PRODUCT] Product sizes: ${product.sizes?.join(', ') || 'none'}`);
+          console.log(`🔍 [ORDER_PRODUCT] Product colors: ${product.colors?.join(', ') || 'none'}`);
+          
+          // Build cart item with sizes/colors and stock info for Quick Form validation
+          const cartItem = {
+            productId: product.id,
+            productName: product.name,
+            productPrice: product.price,
+            productImageUrl: product.image_urls?.[0],
+            quantity: 1,
+            // Include sizes/colors for Quick Form prompt building
+            sizes: product.sizes || [],
+            colors: product.colors || [],
+            // Include stock info for validation
+            size_stock: product.size_stock || [],
+            stock_quantity: product.stock_quantity || 0,
+          };
           
           // Find or create conversation
           let { data: conversation } = await supabase
@@ -200,13 +230,7 @@ async function processMessagingEvent(
                 current_state: targetState,
                 context: {
                   state: targetState,
-                  cart: [{
-                    productId: product.id,
-                    productName: product.name,
-                    productPrice: product.price,
-                    productImageUrl: product.image_urls?.[0],
-                    quantity: 1,
-                  }],
+                  cart: [cartItem],
                   checkout: {},
                 },
               })
@@ -220,13 +244,7 @@ async function processMessagingEvent(
               context: {
                 ...conversation.context,
                 state: targetState,
-                cart: [{
-                  productId: product.id,
-                  productName: product.name,
-                  productPrice: product.price,
-                  productImageUrl: product.image_urls?.[0],
-                  quantity: 1,
-                }],
+                cart: [cartItem],
               },
             };
 
@@ -250,9 +268,25 @@ async function processMessagingEvent(
           const { sendMessage } = await import('@/lib/facebook/messenger');
           
           if (isQuickForm) {
-            // Send quick form prompt
-            const message = settings.quick_form_prompt || 
+            // Build dynamic quick form prompt with sizes/colors if available
+            let message = settings.quick_form_prompt || 
               'দারুণ! অর্ডারটি সম্পন্ন করতে, অনুগ্রহ করে নিচের ফর্ম্যাট অনুযায়ী আপনার তথ্য দিন:\n\nনাম:\nফোন:\nসম্পূর্ণ ঠিকানা:';
+            
+            // Append size field if product has sizes
+            const hasSizes = product.sizes && product.sizes.length > 0;
+            const hasColors = product.colors && product.colors.length > 1;
+            
+            if (hasSizes) {
+              message += `\nসাইজ: (${product.sizes.join('/')})`;
+            }
+            
+            if (hasColors) {
+              message += `\nকালার: (${product.colors.join('/')})`;
+            }
+            
+            // Add optional quantity field
+            message += '\nপরিমাণ: (1 হলে লিখতে হবে না)';
+            
             await sendMessage(pageId, customerPsid, message);
           } else {
             // Send conversational ask name message

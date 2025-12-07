@@ -30,6 +30,12 @@ export interface CartItem {
   quantity: number;
   imageUrl?: string;
   variations?: Record<string, string>; // e.g., { size: 'L', color: 'Red' }
+  // Available options for the product (for Quick Form prompts)
+  sizes?: string[];
+  colors?: string[];
+  // Selected values
+  selectedSize?: string;
+  selectedColor?: string;
 }
 
 // ============================================
@@ -124,6 +130,16 @@ export interface ConversationContext {
   
   /** @deprecated Use checkout.totalAmount instead */
   totalAmount?: number;
+  
+  // ============================================
+  // SIZE/COLOR SELECTION (for Quick Form)
+  // ============================================
+  
+  /** Selected size from Quick Form parsing */
+  selectedSize?: string;
+  
+  /** Selected color from Quick Form parsing */
+  selectedColor?: string;
 }
 
 // ============================================

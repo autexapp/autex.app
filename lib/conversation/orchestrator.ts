@@ -658,6 +658,12 @@ async function handleImageMessage(
             productPrice: product.price,
             imageUrl: product.image_urls?.[0], // Store image URL
             quantity: 1,
+            // Include sizes/colors for Quick Form validation
+            sizes: product.sizes || [],
+            colors: product.colors || [],
+            // Include stock info for validation
+            size_stock: product.size_stock || [],
+            stock_quantity: product.stock_quantity || 0,
           }],
           metadata: {
             ...currentContext.metadata,
@@ -740,8 +746,11 @@ async function createOrderInDb(
     payment_status: 'unpaid',
     quantity: cartItem.quantity,
     product_image_url: cartItem.imageUrl || null, // Store product image
-    product_variations: cartItem.variations || null, // Store variations (color, size, etc.)
+    product_variations: (cartItem as any).variations || null, // Store variations (color, size, etc.)
     payment_last_two_digits: context.checkout?.paymentLastTwoDigits || null, // Store payment digits
+    // NEW: Store size/color selection for easy access
+    selected_size: (cartItem as any).selectedSize || (cartItem as any).variations?.size || (context as any).selectedSize || null,
+    selected_color: (cartItem as any).selectedColor || (cartItem as any).variations?.color || (context as any).selectedColor || null,
   };
   
   const { error } = await supabase.from('orders').insert(orderData);
@@ -749,6 +758,57 @@ async function createOrderInDb(
   if (error) {
     console.error('❌ Error creating order:', error);
     throw error;
+  }
+  
+  // Deduct stock after successful order
+  try {
+    const selectedSize = orderData.selected_size;
+    const orderQuantity = orderData.quantity || 1;
+    
+    // Fetch current product data
+    const { data: product } = await supabase
+      .from('products')
+      .select('size_stock, stock_quantity')
+      .eq('id', cartItem.productId)
+      .single();
+    
+    if (product) {
+      if (selectedSize && product.size_stock && Array.isArray(product.size_stock)) {
+        // Deduct from size-specific stock
+        const updatedSizeStock = product.size_stock.map((ss: any) => {
+          if (ss.size?.toUpperCase() === selectedSize.toUpperCase()) {
+            return { ...ss, quantity: Math.max(0, (ss.quantity || 0) - orderQuantity) };
+          }
+          return ss;
+        });
+        
+        // Calculate new total stock
+        const newTotalStock = updatedSizeStock.reduce((sum: number, ss: any) => sum + (ss.quantity || 0), 0);
+        
+        await supabase
+          .from('products')
+          .update({ 
+            size_stock: updatedSizeStock,
+            stock_quantity: newTotalStock
+          })
+          .eq('id', cartItem.productId);
+        
+        console.log(`📉 Stock deducted: ${selectedSize} -${orderQuantity} (new total: ${newTotalStock})`);
+      } else {
+        // Deduct from total stock
+        const newStock = Math.max(0, (product.stock_quantity || 0) - orderQuantity);
+        
+        await supabase
+          .from('products')
+          .update({ stock_quantity: newStock })
+          .eq('id', cartItem.productId);
+        
+        console.log(`📉 Stock deducted: -${orderQuantity} (new total: ${newStock})`);
+      }
+    }
+  } catch (stockError) {
+    console.error('⚠️ Error deducting stock (order still created):', stockError);
+    // Don't throw - order is already created, just log the stock error
   }
   
   console.log(`✅ Order created: ${orderNumber}`);

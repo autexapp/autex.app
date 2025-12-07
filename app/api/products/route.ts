@@ -318,6 +318,7 @@ export async function POST(request: NextRequest) {
         search_keywords: searchKeywords, // Magic Upload keywords for Tier 3
         colors: productData.colors || [],
         sizes: productData.sizes || [],
+        size_stock: productData.size_stock || [], // NEW: per-size stock tracking
       })
       .select()
       .single();

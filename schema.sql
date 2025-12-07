@@ -82,6 +82,9 @@ CREATE TABLE public.orders (
   product_variations jsonb,
   payment_last_two_digits text,
   is_test boolean DEFAULT false,
+  selected_size text,
+  selected_color text,
+  size_stock_id text,
   CONSTRAINT orders_pkey PRIMARY KEY (id),
   CONSTRAINT orders_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id),
   CONSTRAINT orders_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
@@ -116,6 +119,8 @@ CREATE TABLE public.products (
   search_keywords ARRAY DEFAULT '{}'::text[],
   colors ARRAY DEFAULT '{}'::text[],
   sizes ARRAY DEFAULT '{}'::text[],
+  size_stock jsonb DEFAULT '[]'::jsonb,
+  requires_size_selection boolean DEFAULT true,
   CONSTRAINT products_pkey PRIMARY KEY (id),
   CONSTRAINT products_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id)
 );
@@ -196,6 +201,9 @@ Screenshot পাঠালে আমরা verify করব।'::text,
 আপনার নাম
 017XXXXXXXX
 আপনার সম্পূর্ণ ঠিকানা'::text,
+  out_of_stock_message text DEFAULT 'দুঃখিত! 😔 "{productName}" এখন স্টকে নেই।
+
+আপনি চাইলে অন্য পণ্যের নাম লিখুন বা স্ক্রিনশট পাঠান। আমরা সাহায্য করতে পারবো! 🛍️'::text,
   CONSTRAINT workspace_settings_pkey PRIMARY KEY (id),
   CONSTRAINT workspace_settings_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id)
 );

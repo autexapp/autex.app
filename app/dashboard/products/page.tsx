@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Search, Upload, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Search, Upload, Pencil, Trash2, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { TopBar } from '@/components/dashboard/top-bar';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { AddProductModal } from '@/components/dashboard/add-product-modal';
+import { ProductDetailsModal } from '@/components/dashboard/product-details-modal';
 import { RequireFacebookPage } from '@/components/dashboard/require-facebook-page';
 
 interface Product {
@@ -31,6 +32,9 @@ interface Product {
   category?: string;
   image_urls?: string[];
   image_hash: string | null;
+  colors?: string[];
+  sizes?: string[];
+  size_stock?: { size: string; quantity: number }[];
 }
 
 interface PaginationData {
@@ -60,6 +64,7 @@ export default function ProductsPage() {
   const [sortBy, setSortBy] = useState('recent');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [viewingProduct, setViewingProduct] = useState<Product | null>(null);
   const [deleteProductId, setDeleteProductId] = useState<string | null>(null);
 
   // Open add modal if query param is present
@@ -240,13 +245,19 @@ export default function ProductsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {products.map((product) => (
                 <Card key={product.id} className="bg-card border border-border shadow-sm overflow-hidden">
-                  {/* Fixed height image */}
-                  <div className="h-48 relative bg-muted">
+                  {/* Fixed height image - clickable for details */}
+                  <div 
+                    className="h-48 relative bg-muted cursor-pointer group"
+                    onClick={() => setViewingProduct(product)}
+                  >
                     <img
                       src={product.image_urls?.[0] || "/placeholder.svg"}
                       alt={product.name}
-                      className={`w-full h-full object-cover ${product.stock_quantity === 0 ? "opacity-50" : ""}`}
+                      className={`w-full h-full object-cover ${product.stock_quantity === 0 ? "opacity-50" : ""} group-hover:opacity-80 transition-opacity`}
                     />
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20">
+                      <Eye className="h-8 w-8 text-white drop-shadow" />
+                    </div>
                     {product.stock_quantity === 0 && (
                       <Badge variant="destructive" className="absolute top-2 right-2 text-xs px-2 py-0.5">
                         Out of Stock
@@ -376,6 +387,13 @@ export default function ProductsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Product Details Modal */}
+      <ProductDetailsModal
+        product={viewingProduct}
+        open={!!viewingProduct}
+        onClose={() => setViewingProduct(null)}
+      />
     </RequireFacebookPage>
   );
 }
