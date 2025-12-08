@@ -4159,3 +4159,149 @@ const NO_PATTERNS = [
 | `order` | Start order | `YES_PATTERNS` |
 
 ---
+
+## AI Director Enhancement - Full Implementation (Phase 1, 2, 3)
+
+### Overview
+Successfully implemented the improved **AI Director** (Tier 2/3) system, transforming the chatbot from a simple pattern matcher into a robust, intelligent agent capable of handling complex queries, validation, multi-step actions, and tool usage.
+
+### Key Implementation Details
+
+#### 1. Robust Validation & Safety (Phase 1)
+**File**: `lib/conversation/action-validator.ts`
+- **Validation**: Enforces valid state transitions, checks product existence, and verifies checkout info integrity.
+- **Safety**: Prevents AI hallucinations (e.g., inventing products or valid phone numbers).
+- **Rollback**: Automatic context rollback on errors to prevent data corruption.
+- **Confidence Checks**: If confidence < 70%, the AI asks clarifying questions instead of guessing.
+
+#### 2. Multi-Step Intelligence (Phase 2)
+**File**: `lib/conversation/orchestrator.ts`, `lib/conversation/ai-director.ts`
+- **`EXECUTE_SEQUENCE` Action**: Allows the AI to perform multiple operations in a single response turn.
+- **Complex Intents**: Handle inputs like "Select 1st blue and 2nd red" or "My name is X, phone is Y, address is Z" seamlessly.
+
+#### 3. Agent Mode & Tools (Phase 3)
+**File**: `lib/conversation/agent-tools.ts`
+- **New Tools**:
+  - `checkStock(searchQuery)`: Real-time database inventory check.
+  - `trackOrder(phone)`: Recent order status lookup.
+  - `calculateDelivery(address)`: Precise delivery charge calculation.
+- **Agent Loop**: The orchestrator now performs an internal "reasoning loop" (max 3 turns), allowing the AI to call tools, receive their output ("System Tool Result"), and reason over the data *before* sending a final response to the user.
+- **Benefit**: The AI no longer guesses about stock or order status—it checks the database.
+
+### Technical Achievements
+- ✅ **Hallucination Prevention**: Strict validation layer.
+- ✅ **Context Awareness**: Remembers conversation history across tool calls.
+- ✅ **Cost Optimization**: Tools usage is targeted, reducing incorrect guesses.
+- ✅ **Scalability**: New tools can be added to `AgentTools` easily.
+
+### Files Created/Modified
+- `lib/conversation/action-validator.ts` (New)
+- `lib/conversation/agent-tools.ts` (New)
+- `lib/conversation/ai-director.ts` (Enhanced system prompt & interface)
+- `lib/conversation/orchestrator.ts` (Agent loop integration)
+
+---
+
+## Security Updates (2025-12-08)
+
+### CVE-2025-55182 Remediation
+- **Vulnerability**: React Server Components remote code execution (Critical).
+- **Action Taken**: Upgraded `next` package from `15.5.6` (vulnerable) to `15.5.7` (patched).
+- **Verification**: `pnpm install` completed successfully.
+
+---
+
+## Fast Lane Enhancements - Global Policy Q&A (2025-12-08)
+
+### Overview
+Implemented a global interruption handler in the Fast Lane to ensure questions about Delivery, Payment, Return, etc., are answered instantly from any state (IDLE, collecting info, etc.) using dynamic workspace settings.
+
+### Key Features
+- **Global Coverage**: Questions handled in ALL conversation states (not just collecting states).
+- **Dynamic Responses**: Uses `workspace_settings` (e.g., `fastLaneMessages.deliveryInfo`) for answers.
+- **Smart Re-prompting**: After answering, the bot automatically re-prompts for the information it was collecting (e.g., "By the way, what is your name?").
+- **Code Refactoring**: Removed redundant logic from individual state handlers in `fast-lane.ts`, reducing code duplication and improving maintainability.
+
+### Files Modified
+- `lib/conversation/fast-lane.ts` (Refactored `tryFastLane` and handlers)
+
+---
+
+## AI Director Product Cards & Bug Fixes (2025-12-08)
+
+### Overview
+Implemented product card display for text-based queries and fixed multiple critical bugs in the order flow.
+
+### New Features
+
+#### 1. Product Cards for Text Queries
+- **File**: `lib/facebook/messenger.ts`
+  - Added `sendProductCarousel()` function for displaying multiple products
+- **File**: `lib/conversation/orchestrator.ts`
+  - Enhanced `SEARCH_PRODUCTS` handler to send product cards for single matches
+  - Sends carousel for multiple product matches
+  - Falls back to text if API fails
+- **File**: `lib/conversation/ai-director.ts`
+  - Added product search examples to system prompt
+
+### Bug Fixes
+
+#### 1. Stock Check Bug (Critical)
+- **Issue**: Products showed "out of stock" despite having stock (e.g., 74 units)
+- **Root Cause**: Code checked `stock_quantity` property but data used `stock`
+- **Fix**: Now checks both: `stock ?? stock_quantity ?? 0`
+- **Files**: `lib/conversation/fast-lane.ts` (2 locations)
+
+#### 2. Cart Not Saved Bug (Critical)
+- **Issue**: After sending screenshot, cart was empty when user said "order"
+- **Root Cause**: `handleImageMessage` only set `pendingImages`, not `cart`
+- **Fix**: Single image now adds product to cart immediately
+- **File**: `lib/conversation/orchestrator.ts`
+
+#### 3. Keyword False Positives
+- **Issue**: Order info like "M", "Blue" triggered product details response
+- **Root Cause**: SIZE_KEYWORDS and DETAILS_KEYWORDS too broad
+- **Fix**: Skip global interruption in `AWAITING_CUSTOMER_DETAILS` and `CONFIRMING_ORDER` states
+- **File**: `lib/conversation/fast-lane.ts`, `lib/conversation/keywords.ts`
+
+#### 4. Contact Info False Positive
+- **Issue**: "update the number" triggered shop contact info
+- **Root Cause**: Standalone "number" in SELLER_KEYWORDS
+- **Fix**: Changed to specific phrases like "contact information"
+- **File**: `lib/conversation/keywords.ts`
+
+#### 5. State Transition Validation
+- **Issue**: AI Director couldn't transition from CONFIRMING_ORDER to COLLECTING_PHONE
+- **Fix**: Added `COLLECTING_NAME`, `COLLECTING_PHONE`, `COLLECTING_ADDRESS` as valid transitions
+- **File**: `lib/conversation/action-validator.ts`
+
+#### 6. Update Flow Not Returning to Summary
+- **Issue**: After updating phone, bot continued conversational flow instead of showing updated summary
+- **Fix**: Check if checkout info exists; if so, return to CONFIRMING_ORDER with fresh summary
+- **Files**: `lib/conversation/fast-lane.ts` (handleCollectingName, handleCollectingPhone)
+
+#### 7. Multi-Image Message on First Image
+- **Issue**: Single screenshot showed "Xটা প্রোডাক্ট সিলেক্ট হয়েছে!" instead of order prompt
+- **Root Cause**: Expired `pendingImages` not cleared before checking `isFirstImage`
+- **Fix**: Clear pending images if batch window (5 minutes) expired
+- **File**: `lib/conversation/orchestrator.ts`
+
+#### 8. Confusing Max Screenshot Limit Message
+- **Issue**: "সর্বোচ্চ 5টা" confused customers about quantity limits
+- **Fix**: Removed max number mentions from response messages
+- **File**: `lib/conversation/orchestrator.ts`
+
+### Technical Achievements
+- ✅ Product cards with images for text-based queries
+- ✅ Smart update flow (name/phone/address) returns to summary
+- ✅ Robust stock checking with fallback property names
+- ✅ Clean session handling with batch window expiry
+- ✅ Reduced keyword false positives
+
+### Files Modified
+- `lib/facebook/messenger.ts` (+sendProductCarousel)
+- `lib/conversation/orchestrator.ts` (SEARCH_PRODUCTS, handleImageMessage)
+- `lib/conversation/ai-director.ts` (examples)
+- `lib/conversation/fast-lane.ts` (multiple handlers)
+- `lib/conversation/keywords.ts` (SELLER_KEYWORDS)
+- `lib/conversation/action-validator.ts` (state transitions)

@@ -25,9 +25,16 @@ import {
 } from '@/types/conversation';
 import { tryFastLane } from './fast-lane';
 import aiDirector, { AIDirectorDecision } from './ai-director';
+import { 
+  validateAIDecision, 
+  hasLowConfidence, 
+  createClarificationDecision, 
+  createValidationErrorDecision 
+} from './action-validator';
 import { sendMessage } from '@/lib/facebook/messenger';
 import { generateOrderNumber } from './replies';
 import { getCachedSettings, WorkspaceSettings, getDeliveryCharge } from '@/lib/workspace/settings-cache';
+import { AgentTools, ToolResult } from './agent-tools';
 
 // ============================================
 // TYPES
@@ -242,15 +249,103 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     if (input.messageText) {
       console.log('🧠 Calling AI Director...');
       
+      // Save context before AI action (for potential rollback)
+      const previousContext = { ...currentContext };
+      
       try {
-        const decision = await aiDirector({
-          userMessage: input.messageText,
-          currentState,
-          currentContext,
-          workspaceId: input.workspaceId,
-          settings,
-          conversationHistory,
-        });
+        let decision: AIDirectorDecision | null = null;
+        let finalDecision: AIDirectorDecision | null = null;
+        const maxTurns = 3;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const historyForAI: any[] = [...conversationHistory];
+        
+        // Agent Loop for Tool Usage (Phase 3)
+        for (let turn = 0; turn < maxTurns; turn++) {
+          console.log(`🧠 AI Director Turn ${turn + 1}/${maxTurns}`);
+          
+          decision = await aiDirector({
+            userMessage: input.messageText,
+            currentState,
+            currentContext,
+            workspaceId: input.workspaceId,
+            settings,
+            conversationHistory: historyForAI,
+          });
+          
+          // Handle Tool Calls
+          if (decision.action === 'CALL_TOOL') {
+            console.log(`🛠️ AI Requesting Tool: ${decision.actionData?.toolName}`);
+            const toolName = decision.actionData?.toolName;
+            const toolArgs = decision.actionData?.toolArgs;
+            
+            let toolResult: ToolResult = { 
+              toolName: toolName || 'unknown', 
+              success: false, 
+              result: null, 
+              message: 'Tool execution failed' 
+            };
+            
+            // Execute Tool
+            if (toolName === 'checkStock' && toolArgs?.searchQuery) {
+              toolResult = await AgentTools.checkStock(input.workspaceId, toolArgs.searchQuery);
+            } else if (toolName === 'trackOrder' && toolArgs?.phone) {
+              toolResult = await AgentTools.trackOrder(input.workspaceId, toolArgs.phone);
+            } else if (toolName === 'calculateDelivery' && toolArgs?.address) {
+              toolResult = await AgentTools.calculateDelivery(toolArgs.address, settings);
+            } else {
+              toolResult = {
+                toolName: toolName || 'unknown',
+                success: false,
+                result: null,
+                message: `Unknown tool or missing args: ${toolName}`
+              };
+            }
+            
+            console.log(`✅ Tool Result: ${toolResult.message}`);
+            
+            // Append tool result to history for next turn
+            // We simulate this by adding a "bot" message with system prefix
+            historyForAI.push({
+              sender: 'bot',
+              message: `[SYSTEM TOOL RESULT] (${toolName}): ${toolResult.message}`,
+              timestamp: new Date().toISOString()
+            });
+            
+            // Continue to next turn (AI will see tool result and decide next step)
+            continue;
+          }
+          
+          // If not a tool call, this is the final decision
+          finalDecision = decision;
+          break;
+        }
+        
+        // Use final decision (or fallback if loop exhausted)
+        decision = finalDecision || decision!; // Should have a decision from last turn
+        
+        // ========================================
+        // STEP 4a: CONFIDENCE CHECK
+        // ========================================
+        
+        if (hasLowConfidence(decision)) {
+          console.log(`⚠️ Low confidence (${decision.confidence}%) - asking for clarification`);
+          decision = createClarificationDecision(decision, currentState);
+        } else {
+          // ========================================
+          // STEP 4b: VALIDATION CHECK
+          // ========================================
+          
+          const validation = await validateAIDecision(
+            decision,
+            currentContext,
+            input.workspaceId
+          );
+          
+          if (!validation.valid) {
+            console.log(`❌ Validation failed: ${validation.error}`);
+            decision = createValidationErrorDecision(validation, currentState);
+          }
+        }
         
         return await executeDecision(
           decision,
@@ -261,6 +356,9 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
         );
       } catch (error) {
         console.error('❌ AI Director failed:', error);
+        
+        // Rollback context on error (context wasn't modified yet, but good practice)
+        currentContext = previousContext;
         
         // Send user-friendly fallback message
         const fallbackMessage = "দুঃখিত, আমাদের একটা technical সমস্যা হয়েছে। একটু পরে আবার try করুন। 🙏";
@@ -458,7 +556,7 @@ async function executeDecision(
       break;
     
     case 'SEARCH_PRODUCTS':
-      // Search for products
+      // Search for products and send product cards
       console.log('🔍 Searching products...');
       if (decision.actionData?.searchQuery) {
         const products = await searchProducts(
@@ -468,24 +566,99 @@ async function executeDecision(
         );
         
         if (products.length === 0) {
-          response = `Sorry, I couldn't find "${decision.actionData.searchQuery}" in our catalog. 😔\n\nTry sending me a photo or using different keywords!`;
+          response = `দুঃখিত! "${decision.actionData.searchQuery}" পাওয়া যায়নি। 😔\n\nঅন্য কিছু খুঁজুন বা পণ্যের ছবি পাঠান!`;
         } else if (products.length === 1) {
-          // Single product - add to context and transition to CONFIRMING_PRODUCT
+          // Single product - send product card
+          const product = products[0];
+          
+          // Skip Facebook API in test mode
+          if (!input.isTestMode) {
+            const { sendProductCard, sendMessage } = await import('@/lib/facebook/messenger');
+            
+            try {
+              await sendProductCard(
+                input.pageId,
+                input.customerPsid,
+                {
+                  id: product.id,
+                  name: product.name,
+                  price: product.price,
+                  imageUrl: product.image_urls?.[0] || '',
+                  stock: product.stock_quantity || 0,
+                }
+              );
+              console.log('✅ Product card sent for search result');
+              
+              // Send clarifying text
+              await sendMessage(input.pageId, input.customerPsid, 'এটা কি আপনার পছন্দের পণ্য? 👆');
+              response = '';
+            } catch (error) {
+              console.error('❌ Failed to send product card:', error);
+              // Fallback to text
+              response = `✅ পাওয়া গেছে: ${product.name}\n💰 মূল্য: ৳${product.price}\n\nঅর্ডার করতে চান? (YES/NO)`;
+            }
+          } else {
+            // Test mode - set product card data
+            productCard = {
+              id: product.id,
+              name: product.name,
+              price: product.price,
+              imageUrl: product.image_urls?.[0] || '',
+              stock: product.stock_quantity || 0,
+            };
+            response = `✅ পাওয়া গেছে: ${product.name}\n💰 মূল্য: ৳${product.price}\n\nঅর্ডার করতে চান? (YES/NO)`;
+          }
+          
+          // Add to cart and transition to CONFIRMING_PRODUCT
           updatedContext.cart = [{
-            productId: products[0].id,
-            productName: products[0].name,
-            productPrice: products[0].price,
+            productId: product.id,
+            productName: product.name,
+            productPrice: product.price,
             quantity: 1,
+            sizes: product.sizes || [],
+            colors: product.colors || [],
           }];
           newState = 'CONFIRMING_PRODUCT';
-          response = `✅ Found: ${products[0].name}\n💰 Price: ৳${products[0].price}\n\nWould you like to order this? (YES/NO)`;
         } else {
-          // Multiple products - send list
-          response = `Found ${products.length} products:\n\n`;
-          products.slice(0, 5).forEach((p, i) => {
-            response += `${i + 1}. ${p.name} - ৳${p.price}\n`;
-          });
-          response += `\nSend me a photo or be more specific to narrow down the search!`;
+          // Multiple products - send carousel
+          console.log(`📎 Found ${products.length} products, sending carousel...`);
+          
+          // Skip Facebook API in test mode
+          if (!input.isTestMode) {
+            const { sendProductCarousel, sendMessage } = await import('@/lib/facebook/messenger');
+            
+            try {
+              const carouselProducts = products.slice(0, 5).map(p => ({
+                id: p.id,
+                name: p.name,
+                price: p.price,
+                imageUrl: p.image_urls?.[0] || '',
+                stock: p.stock_quantity || 0,
+              }));
+              
+              await sendProductCarousel(input.pageId, input.customerPsid, carouselProducts);
+              console.log('✅ Product carousel sent');
+              
+              // Send follow-up text
+              await sendMessage(input.pageId, input.customerPsid, `${products.length}টি পণ্য পেয়েছি! 👆 কোনটি পছন্দ করুন। 🛍️`);
+              response = '';
+            } catch (error) {
+              console.error('❌ Failed to send carousel:', error);
+              // Fallback to text list
+              response = `${products.length}টি পণ্য পাওয়া গেছে:\n\n`;
+              products.slice(0, 5).forEach((p, i) => {
+                response += `${i + 1}. ${p.name} - ৳${p.price}\n`;
+              });
+              response += `\nকোন নম্বরটি চান বলুন!`;
+            }
+          } else {
+            // Test mode - return text list
+            response = `${products.length}টি পণ্য পাওয়া গেছে:\n\n`;
+            products.slice(0, 5).forEach((p: any, i: number) => {
+              response += `${i + 1}. ${p.name} - ৳${p.price}\n`;
+            });
+            response += `\nকোন নম্বরটি চান বলুন!`;
+          }
         }
       }
       break;
@@ -543,6 +716,119 @@ async function executeDecision(
           console.log('🧪 Test mode: Returning product card data');
           response = decision.response || `✅ Found: ${decision.actionData.product.name}\n💰 Price: ৳${decision.actionData.product.price}\n\nWould you like to order this? (YES/NO)`;
         }
+      }
+      break;
+    
+    case 'EXECUTE_SEQUENCE':
+      // Execute multiple actions in sequence (Phase 2)
+      console.log('🔄 Executing action sequence...');
+      if (decision.sequence && decision.sequence.length > 0) {
+        for (let i = 0; i < decision.sequence.length; i++) {
+          const step: NonNullable<AIDirectorDecision['sequence']>[number] = decision.sequence[i];
+          console.log(`  Step ${i + 1}/${decision.sequence.length}: ${step.action}`);
+          
+          // Execute each step's action
+          switch (step.action) {
+            case 'ADD_TO_CART':
+              if (step.actionData) {
+                const { addToCart } = await import('@/types/conversation');
+                const cartIndex = step.actionData.cartIndex;
+                const pendingImages = updatedContext.pendingImages || [];
+                
+                // If cartIndex is provided, use pending image at that index
+                if (cartIndex !== undefined && pendingImages[cartIndex]) {
+                  const pending = pendingImages[cartIndex];
+                  if (pending.recognitionResult.success) {
+                    updatedContext.cart = addToCart(updatedContext.cart || [], {
+                      productId: pending.recognitionResult.productId || '',
+                      productName: pending.recognitionResult.productName || 'Product',
+                      productPrice: pending.recognitionResult.productPrice || 0,
+                      quantity: step.actionData.quantity || 1,
+                      selectedSize: step.actionData.selectedSize,
+                      selectedColor: step.actionData.selectedColor,
+                      sizes: pending.recognitionResult.sizes,
+                      colors: pending.recognitionResult.colors,
+                    });
+                  }
+                } else if (step.actionData.productId) {
+                  // Direct product add
+                  updatedContext.cart = addToCart(updatedContext.cart || [], {
+                    productId: step.actionData.productId,
+                    productName: step.actionData.productName || 'Product',
+                    productPrice: step.actionData.productPrice || 0,
+                    quantity: step.actionData.quantity || 1,
+                    selectedSize: step.actionData.selectedSize,
+                    selectedColor: step.actionData.selectedColor,
+                  });
+                }
+              }
+              break;
+            
+            case 'UPDATE_CHECKOUT':
+              if (step.actionData) {
+                // Handle cart item updates (size, color, quantity)
+                if (step.actionData.cartIndex !== undefined && updatedContext.cart) {
+                  const idx = step.actionData.cartIndex;
+                  if (updatedContext.cart[idx]) {
+                    if (step.actionData.selectedSize) {
+                      updatedContext.cart[idx].selectedSize = step.actionData.selectedSize;
+                    }
+                    if (step.actionData.selectedColor) {
+                      updatedContext.cart[idx].selectedColor = step.actionData.selectedColor;
+                    }
+                    if (step.actionData.quantity) {
+                      updatedContext.cart[idx].quantity = step.actionData.quantity;
+                    }
+                  }
+                }
+                
+                // Handle checkout info updates
+                let deliveryCharge = step.actionData.deliveryCharge;
+                if (step.actionData.customerAddress) {
+                  deliveryCharge = getDeliveryCharge(step.actionData.customerAddress, settings);
+                }
+                
+                updatedContext.checkout = {
+                  ...updatedContext.checkout,
+                  customerName: step.actionData.customerName || updatedContext.checkout?.customerName,
+                  customerPhone: step.actionData.customerPhone || updatedContext.checkout?.customerPhone,
+                  customerAddress: step.actionData.customerAddress || updatedContext.checkout?.customerAddress,
+                  deliveryCharge: deliveryCharge || updatedContext.checkout?.deliveryCharge,
+                };
+              }
+              break;
+            
+            case 'REMOVE_FROM_CART':
+              if (step.actionData?.productId) {
+                const { removeFromCart } = await import('@/types/conversation');
+                updatedContext.cart = removeFromCart(
+                  updatedContext.cart || [],
+                  step.actionData.productId
+                );
+              }
+              break;
+            
+            default:
+              console.log(`  ⚠️ Sequence step action not implemented: ${step.action}`);
+          }
+          
+          // Apply step's context updates
+          if (step.updatedContext) {
+            updatedContext = { ...updatedContext, ...step.updatedContext };
+          }
+          
+          // Apply step's new state (last step's state wins)
+          if (step.newState) {
+            newState = step.newState;
+          }
+        }
+        
+        // Clear pending images after processing sequence (if cart items were added)
+        if (updatedContext.cart && updatedContext.cart.length > 0) {
+          updatedContext.pendingImages = [];
+        }
+        
+        console.log(`✅ Sequence complete. Cart: ${updatedContext.cart?.length || 0} items`);
       }
       break;
     
@@ -660,7 +946,17 @@ async function handleImageMessage(
     const imageRecognitionResult = await response.json();
     
     const now = Date.now();
-    const pendingImages = currentContext.pendingImages || [];
+    const BATCH_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+    
+    // Get pending images, but CLEAR them if batch window has expired
+    let pendingImages = currentContext.pendingImages || [];
+    const lastImageTime = currentContext.lastImageReceivedAt || 0;
+    
+    // If more than 5 minutes since last image, treat as new batch (clear old pending images)
+    if (pendingImages.length > 0 && (now - lastImageTime) > BATCH_WINDOW_MS) {
+      console.log('⏰ Batch window expired - clearing old pending images');
+      pendingImages = [];
+    }
     
     // Create pending image entry
     const newPendingImage: PendingImage = {
@@ -706,7 +1002,7 @@ async function handleImageMessage(
     
     if (wasLimited) {
       // Already at max images - Bangla instructions, English keywords
-      responseMessage = `⚠️ সর্বোচ্চ ${MAX_PENDING_IMAGES}টা প্রোডাক্ট!\n\n` +
+      responseMessage = `⚠️ আরো স্ক্রিনশটের জন্য প্রথমে এগুলো অর্ডার করুন!\n\n` +
         `✅ সব অর্ডার করতে "all" লিখুন\n` +
         `🔢 নির্দিষ্ট গুলো: "1 and 3" লিখুন\n` +
         `❌ বাতিল করতে "cancel" লিখুন`;
@@ -716,11 +1012,11 @@ async function handleImageMessage(
         `   🔘 "Order Now" বাটনে ক্লিক করুন\n` +
         `   ✍️ অথবা "order" লিখুন\n\n` +
         `📸 একাধিক প্রোডাক্ট অর্ডার করতে?\n` +
-        `   আরো স্ক্রিনশট পাঠান (সর্বোচ্চ ${MAX_PENDING_IMAGES}টা)`;
+        `   আরো স্ক্রিনশট পাঠান`;
     } else {
       // Additional image - Bangla instructions, English keywords
       responseMessage = `✅ ${imageCount}টা প্রোডাক্ট সিলেক্ট হয়েছে!\n\n` +
-        `📸 আরো পাঠাতে পারেন (সর্বোচ্চ ${MAX_PENDING_IMAGES}টা)\n\n` +
+        `📸 আরো পাঠাতে পারেন\n\n` +
         `✅ সব অর্ডার করতে "all" লিখুন\n` +
         `🔢 নির্দিষ্ট গুলো: "1 and 2" লিখুন\n` +
         `❌ বাতিল করতে "cancel" লিখুন`;
@@ -733,6 +1029,18 @@ async function handleImageMessage(
     // - Single image (1): CONFIRMING_PRODUCT (handles YES/NO)
     // - Multiple images (2+): SELECTING_CART_ITEMS (handles "সবগুলো"/"all", numbers)
     const newState = imageCount > 1 ? 'SELECTING_CART_ITEMS' : 'CONFIRMING_PRODUCT';
+    
+    // CRITICAL FIX: For single image, add product to cart immediately
+    // This allows "order"/"yes" to work without needing button click
+    const cartForSingleImage = imageCount === 1 ? [{
+      productId: product.id,
+      productName: product.name,
+      productPrice: product.price,
+      quantity: 1,
+      sizes: product.sizes || [],
+      colors: product.colors || [],
+      stock: product.stock_quantity || 0,
+    }] : currentContext.cart || [];
     
     return {
       action: 'SEND_PRODUCT_CARD',
@@ -752,6 +1060,7 @@ async function handleImageMessage(
       updatedContext: {
         ...currentContext,
         state: newState,
+        cart: cartForSingleImage, // FIXED: Now cart is populated for single image
         pendingImages: updatedPendingImages,
         lastImageReceivedAt: now,
         metadata: {

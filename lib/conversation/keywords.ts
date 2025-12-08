@@ -219,8 +219,8 @@ const SELLER_KEYWORDS = [
   // Business info
   'দোকান কোথায়', 'dokan kothay', 'shop location', 'ঠিকানা', 'thikana',
   'address', 'এড্রেস', 'office', 'অফিস', 'showroom', 'শোরুম',
-  // Contact
-  'ফোন নম্বর', 'phone number', 'নাম্বার', 'number', 'যোগাযোগ', 'jogajog',
+  // Contact - Using specific phrases to avoid false positives
+  'ফোন নম্বর', 'contact information', 'contact info', 'shop number', 'store number', 'যোগাযোগ', 'jogajog',
   'contact', 'কন্টাক্ট', 'কল করব', 'call korbo', 'হোয়াটসঅ্যাপ', 'whatsapp',
   // Business hours
   'কখন খোলা', 'kokhon khola', 'open', 'বন্ধ', 'bondho', 'closed',

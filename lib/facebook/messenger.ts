@@ -258,6 +258,127 @@ export async function sendProductCard(
 }
 
 /**
+ * Sends multiple product cards as a carousel to a Facebook user via Messenger
+ * Uses Facebook's Generic Template with multiple elements
+ * @param pageId - The Facebook Page ID
+ * @param recipientPsid - The recipient's Page-Scoped ID
+ * @param products - Array of products to display (max 10)
+ * @returns Promise with the send message response
+ * @throws Error if sending fails
+ */
+export async function sendProductCarousel(
+  pageId: string,
+  recipientPsid: string,
+  products: Array<{
+    id: string;
+    name: string;
+    price: number;
+    imageUrl?: string;
+    stock?: number;
+  }>
+): Promise<SendMessageResponse> {
+  try {
+    // Facebook limits Generic Template to 10 elements
+    const limitedProducts = products.slice(0, 10);
+    
+    if (limitedProducts.length === 0) {
+      throw new Error('No products provided for carousel');
+    }
+
+    // Fetch access token from database
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      }
+    );
+    
+    const { data: fbPage, error: pageError } = await supabase
+      .from('facebook_pages')
+      .select('encrypted_access_token')
+      .eq('id', pageId)
+      .single();
+
+    if (pageError || !fbPage) {
+      throw new Error(`Failed to fetch Facebook page: ${pageError?.message || 'Page not found'}`);
+    }
+
+    // Decrypt access token
+    const accessToken = decryptToken(fbPage.encrypted_access_token);
+
+    // Build carousel elements
+    const elements = limitedProducts.map(product => ({
+      title: product.name,
+      image_url: product.imageUrl || undefined,
+      subtitle: `৳${product.price.toLocaleString()}${product.stock !== undefined ? ` | Stock: ${product.stock}` : ''}`,
+      buttons: [
+        {
+          type: 'postback',
+          title: 'Order Now 🛒',
+          payload: `ORDER_PRODUCT_${product.id}`,
+        },
+        {
+          type: 'postback',
+          title: 'View Details 📋',
+          payload: `VIEW_DETAILS_${product.id}`,
+        },
+      ],
+    }));
+
+    // Prepare Generic Template payload
+    const requestBody = {
+      recipient: {
+        id: recipientPsid,
+      },
+      message: {
+        attachment: {
+          type: 'template',
+          payload: {
+            template_type: 'generic',
+            elements: elements,
+          },
+        },
+      },
+    };
+
+    console.log(`Sending product carousel with ${limitedProducts.length} products`);
+
+    // Call Facebook Graph API
+    const apiUrl = `${GRAPH_API_BASE_URL}/${pageId}/messages?access_token=${accessToken}`;
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    // Check rate limits
+    checkRateLimits(response.headers);
+
+    // Handle errors
+    if (!response.ok) {
+      const errorData: FacebookError = await response.json();
+      console.error('Facebook API Error sending product carousel:', errorData);
+      throw new Error(
+        `Failed to send product carousel: ${errorData.error.message}`
+      );
+    }
+
+    const result: SendMessageResponse = await response.json();
+    console.log(`Product carousel sent successfully to ${recipientPsid}: ${result.message_id}`);
+    return result;
+  } catch (error) {
+    console.error('Error sending product carousel:', error);
+    throw error;
+  }
+}
+
+/**
  * Checks rate limit headers and logs warnings if approaching limits
  * @param headers - Response headers from Facebook API
  */

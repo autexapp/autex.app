@@ -199,6 +199,14 @@ export function tryFastLane(
   }
   
   // ============================================
+  // GLOBAL INTERRUPTION CHECK (Any State)
+  // ============================================
+  const globalInterruption = handleGlobalInterruption(trimmedInput, currentState, currentContext, settings);
+  if (globalInterruption) {
+    return globalInterruption;
+  }
+  
+  // ============================================
   // STATE-SPECIFIC PATTERNS
   // ============================================
   
@@ -236,6 +244,147 @@ export function tryFastLane(
 }
 
 // ============================================
+// GLOBAL HANDLERS
+// ============================================
+
+/**
+ * Handles global interruptions (questions about delivery, payment, return, etc.)
+ * that should be answered regardless of current state.
+ */
+function handleGlobalInterruption(
+  input: string,
+  currentState: ConversationState,
+  context: ConversationContext,
+  settings?: WorkspaceSettings
+): FastLaneResult | null {
+  const emoji = settings?.useEmojis ?? true;
+  
+  // CRITICAL: Skip interruption handling in AWAITING_CUSTOMER_DETAILS state
+  // User is providing order info (name, phone, address, size, color)
+  // Keywords like 'M', 'L', 'blue', 'red' are part of the form, not questions
+  // Also skip in CONFIRMING_ORDER - user should say YES/NO, not get distracted
+  if (currentState === 'AWAITING_CUSTOMER_DETAILS' || currentState === 'CONFIRMING_ORDER') {
+    return null;
+  }
+  
+  // Check interruption type
+  const interruptionType = getInterruptionType(input);
+  const isDetailReq = isDetailsRequest(input);
+  
+  if (!interruptionType && !isDetailReq) {
+    return null;
+  }
+  
+  let response = '';
+  
+  if (interruptionType) {
+    switch (interruptionType) {
+      case 'delivery':
+        response = settings?.fastLaneMessages?.deliveryInfo ||
+          `🚚 Delivery Information:\n• ঢাকার মধ্যে: ৳${settings?.deliveryCharges?.insideDhaka || 60}\n• ঢাকার বাইরে: ৳${settings?.deliveryCharges?.outsideDhaka || 120}\n• Delivery সময়: ${settings?.deliveryTime || '3-5 business days'}`;
+        break;
+      
+      case 'payment':
+        response = settings?.fastLaneMessages?.paymentInfo ||
+          `💳 Payment Methods:\nআমরা নিম্নলিখিত payment methods গ্রহণ করি:\n\n• bKash\n• Nagad\n• Cash on Delivery`;
+        break;
+      
+      case 'return':
+        response = settings?.fastLaneMessages?.returnPolicy ||
+          `🔄 Return Policy:\nপণ্য হাতে পাওয়ার পর যদি মনে হয় এটা সঠিক নয়, তাহলে ২ দিনের মধ্যে ফেরত দিতে পারবেন।`;
+        break;
+      
+      case 'urgency':
+        response = settings?.fastLaneMessages?.urgencyResponse ||
+          `🚀 চিন্তার কারণ নেই! সুযোগ থাকলে আমরা দ্রুত ডেলিভারি নিশ্চিত করি।\nঢাকার মধ্যে ২-৩ দিন এবং বাইরে ৩-৫ দিনের মধ্যে পেয়ে যাবেন।`;
+        break;
+        
+      case 'objection':
+        response = settings?.fastLaneMessages?.objectionResponse ||
+          `✨ আমাদের প্রতিটি পণ্য ১০০% অথেনটিক এবং হাই কোয়ালিটি।\nআপনি নিশ্চিন্তে অর্ডার করতে পারেন, পছন্দ না হলে রিটার্ন করার সুযোগ তো থাকছেই!`;
+        break;
+        
+      case 'seller':
+        response = settings?.fastLaneMessages?.sellerInfo ||
+          `🏢 আমাদের অফিস মিরপুর, ঢাকা।\n📞 প্রয়োজনে কল করুন: 01915969330\n⏰ আমরা প্রতিদিন সকাল ১০টা থেকে রাত ১০টা পর্যন্ত খোলা আছি।`;
+        break;
+
+      case 'price':
+      case 'size':
+        // Product specific -> Fallthrough to details request logic if cart has item
+        if (context.cart && context.cart.length > 0) {
+           response = getProductDetailsResponse(context, emoji) || 'Details not available.';
+        } else {
+           response = `Please select a product first to see price/size info.`;
+        }
+        break;
+    }
+  } else if (isDetailReq) {
+    // General details request
+    if (context.cart && context.cart.length > 0) {
+      response = getProductDetailsResponse(context, emoji) || 'Details not available.';
+    }
+  }
+  
+  if (!response) return null;
+  
+  // Append Re-Prompt based on state
+  const rePrompt = getRePrompt(currentState, context, settings);
+  const finalResponse = response + (rePrompt ? `\n\n${rePrompt}` : '');
+  
+  return {
+    matched: true,
+    action: 'CONFIRM', // 'CONFIRM' just means "Handled, stay in state" essentially? 
+                       // Actually we usually want to stay in same state.
+                       // 'CONFIRM' is often used in ConfirmingProduct but action string is just for logging/client sometimes.
+                       // For IDLE, it resets to IDLE. For others, it keeps state.
+    response: emoji ? finalResponse : finalResponse.replace(/[🎉😊📱📍✅🚚💳🔄📦💰📏🎨❌🚀✨🏢📞⏰]/g, ''),
+    newState: currentState, // Maintain current state
+    updatedContext: {
+      ...context,
+      state: currentState,
+    },
+  };
+}
+
+/**
+ * Gets the appropriate re-prompt message based on current state
+ */
+function getRePrompt(
+  state: ConversationState, 
+  context: ConversationContext, 
+  settings?: WorkspaceSettings
+): string {
+  const emoji = settings?.useEmojis ?? true;
+  
+  switch (state) {
+    case 'CONFIRMING_PRODUCT':
+      return `এই product চান? (YES/NO)`;
+      
+    case 'COLLECTING_NAME':
+      return `আপনার সম্পূর্ণ নামটি বলবেন? (Example: Zayed Bin Hamid)`;
+      
+    case 'COLLECTING_PHONE':
+      return `এখন আপনার ফোন নম্বর দিন। ${emoji ? '📱' : ''}`;
+      
+    case 'COLLECTING_ADDRESS':
+      return `আপনার ডেলিভারি ঠিকানাটি দিন। ${emoji ? '📍' : ''}`;
+      
+    case 'COLLECTING_PAYMENT_DIGITS':
+      return `আপনার পেমেন্ট এর লাস্ট ২ ডিজিট দিন।`;
+      
+    case 'AWAITING_CUSTOMER_DETAILS':
+      return `অনুগ্রহ করে আপনার তথ্যগুলো দিন (নাম, ফোন, ঠিকানা)।`;
+      
+    case 'CONFIRMING_ORDER':
+      return `Order confirm করতে YES লিখুন। ✅`;
+      
+    default:
+      return '';
+  }
+}
+
+// ============================================
 // STATE HANDLERS
 // ============================================
 
@@ -249,58 +398,10 @@ function handleConfirmingProduct(
 ): FastLaneResult {
   const emoji = settings?.useEmojis ?? true;
   
-  // Check for interruptions/product questions FIRST (before YES/NO)
-  const interruptionType = getInterruptionType(input);
+
   
-  if (interruptionType) {
-    let interruptionResponse = '';
-    
-    switch (interruptionType) {
-      case 'delivery':
-        interruptionResponse = settings?.fastLaneMessages?.deliveryInfo ||
-          `🚚 Delivery Information:\n• ঢাকার মধ্যে: ৳${settings?.deliveryCharges?.insideDhaka || 60}\n• ঢাকার বাইরে: ৳${settings?.deliveryCharges?.outsideDhaka || 120}`;
-        break;
-      case 'payment':
-        interruptionResponse = settings?.fastLaneMessages?.paymentInfo ||
-          `💳 Payment Methods: bKash, Nagad, COD`;
-        break;
-      case 'return':
-        interruptionResponse = settings?.fastLaneMessages?.returnPolicy ||
-          `🔄 ২ দিনের মধ্যে ফেরত।`;
-        break;
-      case 'urgency':
-        interruptionResponse = settings?.fastLaneMessages?.urgencyResponse ||
-          `🚀 চিন্তার কারণ নেই! আমরা দ্রুত ডেলিভারি নিশ্চিত করি।\nঢাকার মধ্যে ২-৩ দিন এবং বাইরে ৩-৫ দিনের মধ্যে পেয়ে যাবেন।`;
-        break;
-      case 'objection':
-        interruptionResponse = settings?.fastLaneMessages?.objectionResponse ||
-          `✨ আমাদের প্রতিটি পণ্য ১০০% অথেনটিক এবং হাই কোয়ালিটি।\nআপনি নিশ্চিন্তে অর্ডার করতে পারেন, পছন্দ না হলে রিটার্ন করার সুযোগ তো থাকছেই!`;
-        break;
-      case 'seller':
-        interruptionResponse = settings?.fastLaneMessages?.sellerInfo ||
-          `🏢 আমাদের অফিস মিরপুর, ঢাকা।\n📞 প্রয়োজনে কল করুন: 01915969330\n⏰ আমরা প্রতিদিন সকাল ১০টা থেকে রাত ১০টা পর্যন্ত খোলা আছি।`;
-        break;
-      case 'price':
-      case 'size':
-        const productDetails = getProductDetailsResponse(context, emoji);
-        interruptionResponse = productDetails || `Product details: Check the card above`;
-        break;
-    }
-    
-    const rePrompt = `\n\nএই product চান? (YES/NO)`;
-    const finalResponse = interruptionResponse + rePrompt;
-    
-    return {
-      matched: true,
-      action: 'CONFIRM',
-      response: emoji ? finalResponse : finalResponse.replace(/[🎉😊📱📍✅🚚💳🔄📦💰📏🎨❌]/g, ''),
-      newState: 'CONFIRMING_PRODUCT',
-      updatedContext: {
-        ...context,
-        state: 'CONFIRMING_PRODUCT',
-      },
-    };
-  }
+  // NOTE: Interruption checks are now handled globally in handleGlobalInterruption
+  // We only focus on YES/NO/DETAILS here
   
   // Check for product details request (details, colors, etc.)
   if (isDetailsRequest(input)) {
@@ -331,7 +432,9 @@ function handleConfirmingProduct(
     const productAny = product as any;
     
     // CHECK STOCK FIRST - If out of stock, don't proceed to order flow
-    const totalStock = productAny?.stock_quantity || 0;
+    // Note: Different sources use different property names (stock vs stock_quantity)
+    const totalStock = productAny?.stock ?? productAny?.stock_quantity ?? 0;
+    console.log(`📦 [STOCK_CHECK] Product: ${productAny?.productName}, Stock: ${totalStock}`);
     if (totalStock === 0) {
       console.log(`❌ [FAST_LANE] Product out of stock: ${productAny?.productName || 'Unknown'}`);
       const productName = productAny?.productName || 'এই প্রোডাক্ট';
@@ -464,55 +567,9 @@ function handleCollectingName(
 ): FastLaneResult {
   const emoji = settings?.useEmojis ?? true;
   
-  // Check for interruptions first
-  const interruptionType = getInterruptionType(input);
+
   
-  if (interruptionType) {
-    let interruptionResponse = '';
-    
-    switch (interruptionType) {
-      case 'delivery':
-        interruptionResponse = settings?.fastLaneMessages?.deliveryInfo ||
-          `🚚 Delivery Information:\n• ঢাকার মধ্যে: ৳${settings?.deliveryCharges?.insideDhaka || 60}\n• ঢাকার বাইরে: ৳${settings?.deliveryCharges?.outsideDhaka || 120}`;
-        break;
-      case 'payment':
-        interruptionResponse = settings?.fastLaneMessages?.paymentInfo ||
-          `💳 Payment Methods:\nআমরা payment methods গ্রহণ করি: bKash, Nagad, COD`;
-        break;
-      case 'return':
-        interruptionResponse = settings?.fastLaneMessages?.returnPolicy ||
-          `🔄 Return Policy:\nপণ্য হাতে পাওয়ার পর ২ দিনের মধ্যে ফেরত দিতে পারবেন।`;
-        break;
-      case 'urgency':
-        interruptionResponse = settings?.fastLaneMessages?.urgencyResponse ||
-          `🚀 চিন্তার কারণ নেই! আমরা দ্রুত ডেলিভারি নিশ্চিত করি।\nঢাকার মধ্যে ২-৩ দিন এবং বাইরে ৩-৫ দিনের মধ্যে পেয়ে যাবেন।`;
-        break;
-      case 'objection':
-        interruptionResponse = settings?.fastLaneMessages?.objectionResponse ||
-          `✨ আমাদের প্রতিটি পণ্য ১০০% অথেনটিক এবং হাই কোয়ালিটি।\nআপনি নিশ্চিন্তে অর্ডার করতে পারেন, পছন্দ না হলে রিটার্ন করার সুযোগ তো থাকছেই!`;
-        break;
-      case 'seller':
-        interruptionResponse = settings?.fastLaneMessages?.sellerInfo ||
-          `🏢 আমাদের অফিস মিরপুর, ঢাকা।\n📞 প্রয়োজনে কল করুন: 01915969330\n⏰ আমরা প্রতিদিন সকাল ১০টা থেকে রাত ১০টা পর্যন্ত খোলা আছি।`;
-        break;
-      case 'price':
-      case 'size':
-        const productDetails = getProductDetailsResponse(context, emoji);
-        interruptionResponse = productDetails || `আপনি product এর details product card এ দেখতে পাবেন।`;
-        break;
-    }
-    
-    const rePrompt = `আপনার সম্পূর্ণ নামটি বলবেন? (Example: Zayed Bin Hamid)`;
-    const finalResponse = interruptionResponse + '\n\n' + rePrompt;
-    
-    return {
-      matched: true,
-      action: 'CONFIRM',
-      response: emoji ? finalResponse : finalResponse.replace(/[🎉😊📱📍✅🚚💳🔄📦💰📏🎨❌]/g, ''),
-      newState: 'COLLECTING_NAME',
-      updatedContext: { state: 'COLLECTING_NAME' },
-    };
-  }
+  // NOTE: Interruption checks are now handled globally
   
   // Check for product details request
   if (isDetailsRequest(input)) {
@@ -544,6 +601,48 @@ function handleCollectingName(
   // Check if input looks like a name
   if (NAME_PATTERN.test(input)) {
     const name = capitalizeWords(input);
+    
+    // Check if phone and address already exist (user is updating name from CONFIRMING_ORDER)
+    const existingPhone = context.checkout?.customerPhone;
+    const existingAddress = context.checkout?.customerAddress;
+    
+    if (existingPhone && existingAddress) {
+      // All info exists - return to order summary with updated name
+      const deliveryCharge = calculateDeliveryCharge(existingAddress);
+      const cartTotal = calculateCartTotal(context.cart || []);
+      const totalAmount = cartTotal + deliveryCharge;
+      
+      const updatedCheckout = {
+        ...context.checkout,
+        customerName: name,
+        deliveryCharge,
+        totalAmount,
+      };
+      
+      const orderSummary = generateOrderSummary(
+        name,
+        context.cart || [],
+        existingAddress,
+        deliveryCharge,
+        totalAmount,
+        existingPhone,
+      );
+      
+      return {
+        matched: true,
+        action: 'COLLECT_NAME',
+        response: emoji ? `✅ নাম আপডেট হয়েছে!\n\n${orderSummary}` : `নাম আপডেট হয়েছে!\n\n${orderSummary}`,
+        newState: 'CONFIRMING_ORDER',
+        updatedContext: {
+          state: 'CONFIRMING_ORDER',
+          checkout: updatedCheckout,
+          customerName: name,
+        },
+        extractedData: { name },
+      };
+    }
+    
+    // Normal flow - ask for phone
     const message = settings?.fastLaneMessages?.nameCollected ||
       `আপনার সাথে পরিচিত হয়ে ভালো লাগলো, {name}! ${emoji ? '😊' : ''}\n\nএখন আপনার ফোন নম্বর দিন। ${emoji ? '📱' : ''}\n(Example: 01712345678)`;
     
@@ -591,6 +690,48 @@ function handleCollectingPhone(
     if (pattern.test(cleanedInput)) {
       // Normalize to 01XXXXXXXXX format
       const normalizedPhone = normalizePhone(cleanedInput);
+      
+      // Check if address already exists (user is updating phone from CONFIRMING_ORDER)
+      const existingAddress = context.checkout?.customerAddress;
+      if (existingAddress) {
+        // Address exists - return to order summary with updated phone
+        const deliveryCharge = calculateDeliveryCharge(existingAddress);
+        const cartTotal = calculateCartTotal(context.cart || []);
+        const totalAmount = cartTotal + deliveryCharge;
+        
+        const updatedCheckout = {
+          ...context.checkout,
+          customerPhone: normalizedPhone,
+          deliveryCharge,
+          totalAmount,
+        };
+        
+        const orderSummary = generateOrderSummary(
+          context.checkout.customerName || 'Customer',
+          context.cart || [],
+          existingAddress,
+          deliveryCharge,
+          totalAmount,
+          normalizedPhone,
+        );
+        
+        return {
+          matched: true,
+          action: 'COLLECT_PHONE',
+          response: emoji ? `✅ ফোন নম্বর আপডেট হয়েছে!\n\n${orderSummary}` : `ফোন নম্বর আপডেট হয়েছে!\n\n${orderSummary}`,
+          newState: 'CONFIRMING_ORDER',
+          updatedContext: {
+            state: 'CONFIRMING_ORDER',
+            checkout: updatedCheckout,
+            customerPhone: normalizedPhone,
+          },
+          extractedData: {
+            phone: normalizedPhone,
+          },
+        };
+      }
+      
+      // Normal flow - ask for address
       const message = settings?.fastLaneMessages?.phoneCollected ||
         `পেয়েছি! ${emoji ? '📱' : ''}\n\nএখন আপনার ডেলিভারি ঠিকানাটি দিন। ${emoji ? '📍' : ''}\n(Example: House 123, Road 4, Dhanmondi, Dhaka)`;
       
@@ -598,7 +739,7 @@ function handleCollectingPhone(
         matched: true,
         action: 'COLLECT_PHONE',
         response: emoji ? message : message.replace(/[🎉😊📱📍✅]/g, ''),
-        newState: 'COLLECTING_ADDRESS', // FIXED: Was COLLECTING_PHONE
+        newState: 'COLLECTING_ADDRESS', 
         updatedContext: {
           state: 'COLLECTING_ADDRESS',
           checkout: {
@@ -615,72 +756,9 @@ function handleCollectingPhone(
     }
   }
   
-  // NOT a valid phone - check if it's an interruption (question)
-  const interruptionType = getInterruptionType(input);
+  // NOTE: Interruption checks are now handled globally
   
-  if (interruptionType) {
-    // Customer asked a question - answer it with dynamic message from settings
-    let interruptionResponse = '';
-    
-    switch (interruptionType) {
-      case 'delivery':
-        interruptionResponse = settings?.fastLaneMessages?.deliveryInfo ||
-          `🚚 Delivery Information:\n• ঢাকার মধ্যে: ৳${settings?.deliveryCharges?.insideDhaka || 60}\n• ঢাকার বাইরে: ৳${settings?.deliveryCharges?.outsideDhaka || 120}\n• Delivery সময়: ${settings?.deliveryTime || '3-5 business days'}`;
-        break;
-      
-      case 'payment':
-        interruptionResponse = settings?.fastLaneMessages?.paymentInfo ||
-          `💳 Payment Methods:\nআমরা নিম্নলিখিত payment methods গ্রহণ করি:\n\n• bKash\n• Nagad\n• Cash on Delivery`;
-        break;
-      
-      case 'return':
-        interruptionResponse = settings?.fastLaneMessages?.returnPolicy ||
-          `🔄 Return Policy:\nপণ্য হাতে পাওয়ার পর যদি মনে হয় এটা সঠিক নয়, তাহলে ২ দিনের মধ্যে ফেরত দিতে পারবেন।`;
-        break;
-      
-      case 'urgency':
-        interruptionResponse = settings?.fastLaneMessages?.urgencyResponse ||
-          `🚀 চিন্তার কারণ নেই! আমরা দ্রুত ডেলিভারি নিশ্চিত করি।\nঢাকার মধ্যে ২-৩ দিন এবং বাইরে ৩-৫ দিনের মধ্যে পেয়ে যাবেন।`;
-        break;
-      case 'objection':
-        interruptionResponse = settings?.fastLaneMessages?.objectionResponse ||
-          `✨ আমাদের প্রতিটি পণ্য ১০০% অথেনটিক এবং হাই কোয়ালিটি।\nআপনি নিশ্চিন্তে অর্ডার করতে পারেন, পছন্দ না হলে রিটার্ন করার সুযোগ তো থাকছেই!`;
-        break;
-      case 'seller':
-        interruptionResponse = settings?.fastLaneMessages?.sellerInfo ||
-          `🏢 আমাদের অফিস মিরপুর, ঢাকা।\n📞 প্রয়োজনে কল করুন: 01915969330\n⏰ আমরা প্রতিদিন সকাল ১০টা থেকে রাত ১০টা পর্যন্ত খোলা আছি।`;
-        break;
-
-      case 'price':
-      case 'size':
-        // Product-specific questions - show product details from context
-        const productDetails = getProductDetailsResponse(context, emoji);
-        interruptionResponse = productDetails || 
-          `আপনি product এর details product card এ দেখতে পাবেন। 😊`;
-        break;
-      
-      default:
-        interruptionResponse = '';
-    }
-    
-    // Answer the question and re-prompt for phone number
-    const rePrompt = settings?.fastLaneMessages?.phoneCollected?.split('\n')[0] ||
-      `এখন আপনার ফোন নম্বর দিন। ${emoji ? '📱' : ''}`;
-    
-    const finalResponse = interruptionResponse + '\n\n' + rePrompt;
-    
-    return {
-      matched: true,
-      action: 'CONFIRM', // Stay in same state, just send response
-      response: emoji ? finalResponse : finalResponse.replace(/[🎉😊📱📍✅🚚💳🔄]/g, ''),
-      newState: 'COLLECTING_PHONE',
-      updatedContext: {
-        state: 'COLLECTING_PHONE',
-      },
-    };
-  }
-  
-  // Check if it's a general product details request (not covered by interruption type)
+  // Check if it's a general product details request 
   if (isDetailsRequest(input)) {
     const productDetails = getProductDetailsResponse(context, emoji);
     if (productDetails) {
@@ -701,34 +779,21 @@ function handleCollectingPhone(
     }
   }
   
-  // Check if it's order intent ("order", "buy", "কিনব")
+  // Check if order intent
   if (isOrderIntent(input)) {
-    // Customer wants to order - move to next state (collect name)
     const message = settings?.fastLaneMessages?.productConfirm ||
       `দারুণ! ${emoji ? '🎉' : ''}\n\nআপনার সম্পূর্ণ নামটি বলবেন?\n(Example: Zayed Bin Hamid)`;
-    
     return {
-      matched: true,
-      action: 'CONFIRM',
-      response: emoji ? message : message.replace(/[🎉😊📱📍✅]/g, ''),
-      newState: 'COLLECTING_NAME',
-      updatedContext: {
-        state: 'COLLECTING_NAME',
-      },
+      matched: true, action: 'CONFIRM', response: emoji ? message : message.replace(/[🎉😊📱📍✅]/g, ''),
+      newState: 'COLLECTING_NAME', updatedContext: { state: 'COLLECTING_NAME' },
     };
   }
   
-  // Not a valid phone and not an interruption - show error
+  // Not a valid phone and not an interruption
   const invalidMessage = `⚠️ দুঃখিত! সঠিক phone number দিন।\n\nExample: 01712345678`;
-  
   return {
-    matched: true,
-    action: 'CONFIRM',
-    response: emoji ? invalidMessage : invalidMessage.replace(/[⚠️]/g, ''),
-    newState: 'COLLECTING_PHONE',
-    updatedContext: {
-      state: 'COLLECTING_PHONE',
-    },
+    matched: true, action: 'CONFIRM', response: emoji ? invalidMessage : invalidMessage.replace(/[⚠️]/g, ''),
+    newState: 'COLLECTING_PHONE', updatedContext: { state: 'COLLECTING_PHONE' },
   };
 }
 
@@ -742,12 +807,8 @@ function handleCollectingAddress(
 ): FastLaneResult {
   const emoji = settings?.useEmojis ?? true;
   
-  // FIRST: Check if it's a valid address (length >= 10)
-  // This must come BEFORE interruption checks to avoid misdetecting addresses
   if (input.length >= 10) {
     const address = input.trim();
-    
-    // Use settings for delivery charge calculation
     const deliveryCharge = settings 
       ? (address.toLowerCase().includes('dhaka') || address.toLowerCase().includes('ঢাকা')
           ? settings.deliveryCharges.insideDhaka
@@ -778,8 +839,9 @@ function handleCollectingAddress(
           customerAddress: address,
           deliveryCharge,
           totalAmount,
+          customerName: context.checkout.customerName || context.customerName, // Ensure name is preserved
+          customerPhone: context.checkout.customerPhone || context.customerPhone // Ensure phone is preserved
         },
-        // Legacy fields for backward compatibility
         customerAddress: address,
         deliveryCharge,
         totalAmount,
@@ -790,53 +852,7 @@ function handleCollectingAddress(
     };
   }
   
-  // ONLY if NOT a valid address: Check for interruptions
-  const interruptionType = getInterruptionType(input);
-  
-  if (interruptionType) {
-    let interruptionResponse = '';
-    
-    switch (interruptionType) {
-      case 'delivery':
-        interruptionResponse = settings?.fastLaneMessages?.deliveryInfo ||
-          `🚚 Delivery Information:\n• ঢাকার মধ্যে: ৳${settings?.deliveryCharges?.insideDhaka || 60}\n• ঢাকার বাইরে: ৳${settings?.deliveryCharges?.outsideDhaka || 120}`;
-        break;
-      case 'payment':
-        interruptionResponse = settings?.fastLaneMessages?.paymentInfo || `💳 bKash, Nagad, COD`;
-        break;
-      case 'return':
-        interruptionResponse = settings?.fastLaneMessages?.returnPolicy || `🔄 ২ দিনের মধ্যে ফেরত।`;
-        break;
-      case 'urgency':
-        interruptionResponse = settings?.fastLaneMessages?.urgencyResponse ||
-          `🚀 চিন্তার কারণ নেই! আমরা দ্রুত ডেলিভারি নিশ্চিত করি।\nঢাকার মধ্যে ২-৩ দিন এবং বাইরে ৩-৫ দিনের মধ্যে পেয়ে যাবেন।`;
-        break;
-      case 'objection':
-        interruptionResponse = settings?.fastLaneMessages?.objectionResponse ||
-          `✨ আমাদের প্রতিটি পণ্য ১০০% অথেনটিক এবং হাই কোয়ালিটি।\nআপনি নিশ্চিন্তে অর্ডার করতে পারেন, পছন্দ না হলে রিটার্ন করার সুযোগ তো থাকছেই!`;
-        break;
-      case 'seller':
-        interruptionResponse = settings?.fastLaneMessages?.sellerInfo ||
-          `🏢 আমাদের অফিস মিরপুর, ঢাকা।\n📞 প্রয়োজনে কল করুন: 01915969330\n⏰ আমরা প্রতিদিন সকাল ১০টা থেকে রাত ১০টা পর্যন্ত খোলা আছি।`;
-        break;
-      case 'price':
-      case 'size':
-        const productDetails = getProductDetailsResponse(context, emoji);
-        interruptionResponse = productDetails || `details card এ দেখতে পাবেন।`;
-        break;
-    }
-    
-    const rePrompt = `আপনার ডেলিভারি ঠিকানাটি দিন।`;
-    const finalResponse = interruptionResponse + '\n\n' + rePrompt;
-    
-    return {
-      matched: true,
-      action: 'CONFIRM',
-      response: emoji ? finalResponse : finalResponse.replace(/[🎉😊📱📍✅🚚💳🔄📦💰📏🎨❌]/g, ''),
-      newState: 'COLLECTING_ADDRESS',
-      updatedContext: { state: 'COLLECTING_ADDRESS' },
-    };
-  }
+  // NOTE: Interruption checks are now handled globally
   
   // Check for product details request
   if (isDetailsRequest(input)) {
@@ -853,7 +869,6 @@ function handleCollectingAddress(
     }
   }
   
-  // If nothing matched, let it fall back to AI
   return { matched: false };
 }
 
@@ -1710,13 +1725,16 @@ function handleAwaitingCustomerDetails(
           : `দুঃখিত! "${size}" সাইজে মাত্র ${stockAvailable} পিস আছে। আপনি সর্বোচ্চ ${stockAvailable} পিস অর্ডার করতে পারবেন।`;
       }
     }
-  } else if (productAny && quantity > (productAny.stock_quantity || 0)) {
+  } else if (productAny) {
     // Fallback to total stock if no size_stock
-    stockAvailable = productAny.stock_quantity || 0;
-    if (stockAvailable === 0) {
-      stockError = `দুঃখিত! এই প্রোডাক্ট এখন স্টকে নেই।`;
-    } else {
-      stockError = `দুঃখিত! এই প্রোডাক্টে মাত্র ${stockAvailable} পিস আছে। আপনি সর্বোচ্চ ${stockAvailable} পিস অর্ডার করতে পারবেন।`;
+    // Note: Different sources use different property names (stock vs stock_quantity)
+    stockAvailable = productAny.stock ?? productAny.stock_quantity ?? 999;
+    if (quantity > stockAvailable) {
+      if (stockAvailable === 0) {
+        stockError = `দুঃখিত! এই প্রোডাক্ট এখন স্টকে নেই।`;
+      } else {
+        stockError = `দুঃখিত! এই প্রোডাক্টে মাত্র ${stockAvailable} পিস আছে। আপনি সর্বোচ্চ ${stockAvailable} পিস অর্ডার করতে পারবেন।`;
+      }
     }
   }
   
