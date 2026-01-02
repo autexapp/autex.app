@@ -4,9 +4,10 @@ import { sendMessage } from '@/lib/facebook/messenger'
 
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: conversationId } = await params
     const supabase = await createClient()
     
     // Get authenticated user
@@ -37,8 +38,8 @@ export async function POST(
     // Get conversation details
     const { data: conversation, error: conversationError } = await supabase
       .from('conversations')
-      .select('id, fb_page_id, customer_psid, workspace_id')
-      .eq('id', params.id)
+      .select('id, fb_page_id, customer_psid, workspace_id, control_mode')
+      .eq('id', conversationId)
       .eq('workspace_id', workspace.id)
       .single()
 
@@ -67,12 +68,13 @@ export async function POST(
       )
     }
 
-    // Save message to database with sender='human'
+    // Save message to database with sender='human' and sender_type='owner'
     const { data: savedMessage, error: saveError } = await supabase
       .from('messages')
       .insert({
         conversation_id: conversation.id,
         sender: 'human',
+        sender_type: 'owner',
         message_text: text.trim(),
         message_type: 'text',
         attachments: null,
@@ -88,14 +90,24 @@ export async function POST(
       console.warn('⚠️ Message sent to Facebook but failed to save to database')
     }
 
-    // Update conversation's last_message_at timestamp
+    // Update conversation's control_mode and timestamps
+    const currentMode = conversation.control_mode || 'bot'
+    const newMode = currentMode === 'manual' ? 'manual' : 'hybrid'
+    const now = new Date().toISOString()
+    
     const { error: updateError } = await supabase
       .from('conversations')
-      .update({ last_message_at: new Date().toISOString() })
+      .update({ 
+        last_message_at: now,
+        control_mode: newMode,
+        last_manual_reply_at: now,
+      })
       .eq('id', conversation.id)
 
     if (updateError) {
-      console.error('Error updating conversation timestamp:', updateError)
+      console.error('Error updating conversation:', updateError)
+    } else {
+      console.log(`🎛️ [MANUAL MESSAGE] Updated control_mode to: ${newMode}`)
     }
 
     return NextResponse.json({

@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Switch } from "@/components/ui/switch"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,7 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { User, Facebook, Bell, CreditCard, Save, Loader2, AlertCircle, Trash2 } from "lucide-react"
+import { User, Facebook, Bell, CreditCard, Save, Loader2, AlertCircle, Trash2, Bot } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { createClient } from "@/lib/supabase/client"
 import { formatDistanceToNow } from "date-fns"
@@ -49,8 +50,10 @@ interface Notification {
 }
 
 import { SettingsSkeleton } from "@/components/skeletons/settings-skeleton"
+import { useSearchParams } from "next/navigation"
 
 export default function SettingsPage() {
+  const searchParams = useSearchParams()
   const [activeTab, setActiveTab] = useState("general")
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -60,6 +63,14 @@ export default function SettingsPage() {
   })
   const { toast } = useToast()
   const [notifications, setNotifications] = useState<Notification[]>([])
+
+  // Read tab from URL params on mount
+  useEffect(() => {
+    const tabParam = searchParams.get('tab')
+    if (tabParam && ['general', 'facebook', 'notifications', 'billing'].includes(tabParam)) {
+      setActiveTab(tabParam)
+    }
+  }, [searchParams])
 
   useEffect(() => {
     fetchSettings()
@@ -352,12 +363,18 @@ export default function SettingsPage() {
 
 // Facebook Pages Section Component
 function FacebookPagesSection() {
-  const [pages, setPages] = useState<Array<{ id: string; page_name: string; created_at: string }>>([])
+  const [pages, setPages] = useState<Array<{ id: string; page_name: string; created_at: string; bot_enabled: boolean }>>([])
   const [loading, setLoading] = useState(true)
   const [connecting, setConnecting] = useState(false)
+  const [toggling, setToggling] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [disconnectDialog, setDisconnectDialog] = useState<{ open: boolean; pageId: string; pageName: string }>({
+    open: false,
+    pageId: '',
+    pageName: '',
+  })
+  const [disableBotDialog, setDisableBotDialog] = useState<{ open: boolean; pageId: string; pageName: string }>({
     open: false,
     pageId: '',
     pageName: '',
@@ -472,6 +489,59 @@ function FacebookPagesSection() {
     }
   }
 
+  const handleBotToggleClick = (pageId: string, pageName: string, currentState: boolean) => {
+    if (currentState) {
+      // If currently enabled, show confirmation dialog before disabling
+      setDisableBotDialog({ open: true, pageId, pageName })
+    } else {
+      // If currently disabled, enable directly
+      toggleBot(pageId, true)
+    }
+  }
+
+  const handleDisableBotConfirm = () => {
+    toggleBot(disableBotDialog.pageId, false)
+    setDisableBotDialog({ open: false, pageId: '', pageName: '' })
+  }
+
+  const toggleBot = async (pageId: string, enabled: boolean) => {
+    try {
+      setToggling(pageId)
+      
+      const response = await fetch(`/api/facebook/pages/${pageId}/toggle-bot`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bot_enabled: enabled }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.message || 'Failed to update bot status')
+      }
+
+      const { page } = await response.json()
+      
+      // Update local state
+      setPages(prev => prev.map(p => 
+        p.id === pageId ? { ...p, bot_enabled: page.bot_enabled } : p
+      ))
+
+      toast({
+        title: enabled ? '🤖 Bot Enabled' : '🛑 Bot Disabled',
+        description: `Bot ${enabled ? 'enabled' : 'disabled'} for ${page.name}`,
+      })
+    } catch (err: any) {
+      console.error('Error toggling bot:', err)
+      toast({
+        title: 'Error',
+        description: err.message || 'Failed to update bot status',
+        variant: 'destructive',
+      })
+    } finally {
+      setToggling(null)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -530,34 +600,83 @@ function FacebookPagesSection() {
             {pages.map((page) => (
               <div
                 key={page.id}
-                className="flex items-center justify-between p-4 rounded-lg border border-border bg-muted/30"
+                className="p-4 rounded-lg border border-border bg-muted/30 space-y-4"
               >
-                <div className="flex items-center gap-3">
-                  <Avatar className="h-10 w-10">
-                    <AvatarImage 
-                      src={`https://graph.facebook.com/${page.id}/picture?type=normal`} 
-                      alt={page.page_name}
+                {/* Page Info Row */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-10 w-10">
+                      <AvatarImage 
+                        src={`https://graph.facebook.com/${page.id}/picture?type=normal`} 
+                        alt={page.page_name}
+                      />
+                      <AvatarFallback className="bg-blue-100 dark:bg-blue-900/30">
+                        <Facebook className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <h4 className="font-semibold">{page.page_name}</h4>
+                      <p className="text-sm text-muted-foreground">
+                        Connected on {new Date(page.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDisconnectClick(page.id, page.page_name)}
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Disconnect
+                  </Button>
+                </div>
+
+                {/* Bot Toggle Row */}
+                <div className="flex items-center justify-between p-3 rounded-md bg-background border border-border">
+                  <div className="flex items-center gap-3">
+                    <div className={`h-8 w-8 rounded-full flex items-center justify-center ${
+                      page.bot_enabled 
+                        ? 'bg-green-100 dark:bg-green-900/30' 
+                        : 'bg-red-100 dark:bg-red-900/30'
+                    }`}>
+                      <Bot className={`h-4 w-4 ${
+                        page.bot_enabled 
+                          ? 'text-green-600 dark:text-green-400' 
+                          : 'text-red-600 dark:text-red-400'
+                      }`} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm">Bot Status</span>
+                        <Badge 
+                          variant={page.bot_enabled ? "default" : "destructive"}
+                          className={page.bot_enabled 
+                            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" 
+                            : ""
+                          }
+                        >
+                          {page.bot_enabled ? '🤖 Active' : '🛑 Disabled'}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {page.bot_enabled 
+                          ? 'Bot automatically responds to customer messages' 
+                          : 'Bot will not respond to any messages'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {toggling === page.id && (
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    )}
+                    <Switch
+                      checked={page.bot_enabled}
+                      onCheckedChange={() => handleBotToggleClick(page.id, page.page_name, page.bot_enabled)}
+                      disabled={toggling === page.id}
                     />
-                    <AvatarFallback className="bg-blue-100 dark:bg-blue-900/30">
-                      <Facebook className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <h4 className="font-semibold">{page.page_name}</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Connected on {new Date(page.created_at).toLocaleDateString()}
-                    </p>
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleDisconnectClick(page.id, page.page_name)}
-                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Disconnect
-                </Button>
               </div>
             ))}
           </div>
@@ -579,6 +698,32 @@ function FacebookPagesSection() {
                   className="bg-destructive hover:bg-destructive/90 text-white"
                 >
                   Disconnect
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* Disable Bot Confirmation Dialog */}
+          <AlertDialog open={disableBotDialog.open} onOpenChange={(open) => setDisableBotDialog({ ...disableBotDialog, open })}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Disable Bot?</AlertDialogTitle>
+                <AlertDialogDescription className="space-y-2">
+                  <p>
+                    The bot will stop responding to <strong>ALL</strong> customers on <strong>{disableBotDialog.pageName}</strong>.
+                  </p>
+                  <p>
+                    You'll need to reply manually to every message. Continue?
+                  </p>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDisableBotConfirm}
+                  className="bg-destructive hover:bg-destructive/90 text-white"
+                >
+                  Disable Bot
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

@@ -8,6 +8,21 @@ import {
   MessagingEvent,
 } from '@/lib/facebook/utils';
 import { processMessage } from '@/lib/conversation/orchestrator';
+import { processingLock } from '@/lib/conversation/processing-lock';
+
+/**
+ * Protected states where bot should continue even if owner interrupts
+ * These are critical order collection states - incomplete orders are bad UX
+ */
+const PROTECTED_STATES = [
+  'COLLECTING_MULTI_VARIATIONS',
+  'COLLECTING_NAME',
+  'COLLECTING_PHONE',
+  'COLLECTING_ADDRESS',
+  'CONFIRMING_ORDER',
+  'AWAITING_CUSTOMER_DETAILS',
+  'COLLECTING_PAYMENT_DIGITS',
+] as const;
 
 /**
  * GET /api/webhooks/facebook
@@ -123,7 +138,7 @@ export async function POST(request: NextRequest) {
 /**
  * Process a single messaging event
  * 
- * SIMPLIFIED VERSION - Delegates to Orchestrator
+ * ENHANCED VERSION - Detects owner vs customer messages and handles hybrid control mode
  */
 async function processMessagingEvent(
   supabase: any,
@@ -132,8 +147,43 @@ async function processMessagingEvent(
 ) {
   try {
     const { sender, recipient, timestamp, message } = event;
-    const customerPsid = sender.id;
-    const pageId = recipient.id;
+    const senderId = sender.id;
+    const recipientId = recipient.id;
+    
+    // ========================================
+    // DETECT MESSAGE SOURCE (Owner vs Customer)
+    // ========================================
+    
+    // In Facebook webhooks:
+    // - Customer to Page: sender.id = customer PSID, recipient.id = page ID
+    // - Page to Customer: sender.id = page ID, recipient.id = customer PSID
+    // 
+    // When owner replies from Messenger app (not via API), Facebook sends us a webhook
+    // where sender.id === page_id (the owner's message appears as coming from the page)
+    
+    console.log(`🔍 [SOURCE DETECTION] sender.id: ${senderId}, recipient.id: ${recipientId}`);
+    
+    // Fetch the page to check if sender is the page itself (owner message)
+    const { data: fbPageCheck } = await supabase
+      .from('facebook_pages')
+      .select('id, workspace_id, bot_enabled')
+      .or(`id.eq.${senderId},id.eq.${recipientId}`)
+      .limit(1)
+      .single();
+    
+    if (!fbPageCheck) {
+      console.error(`❌ [SOURCE DETECTION] No Facebook page found for sender: ${senderId} or recipient: ${recipientId}`);
+      return;
+    }
+    
+    const actualPageId = String(fbPageCheck.id);
+    const isOwnerMessage = senderId === actualPageId;
+    const customerPsid = isOwnerMessage ? recipientId : senderId;
+    const pageId = actualPageId;
+    
+    console.log(`🔍 [SOURCE DETECTION] Page ID: ${actualPageId}`);
+    console.log(`🔍 [SOURCE DETECTION] Is Owner Message: ${isOwnerMessage}`);
+    console.log(`🔍 [SOURCE DETECTION] Customer PSID: ${customerPsid}`);
 
     // ========================================
     // HANDLE POSTBACK (Button Clicks)
@@ -249,12 +299,21 @@ async function processMessagingEvent(
             };
 
             // Backfill profile if missing
-            if (!conversation.customer_profile_pic_url) {
+            const needsProfileBackfill = !conversation.customer_profile_pic_url || 
+              !conversation.customer_name || 
+              conversation.customer_name === 'Unknown Customer' ||
+              conversation.customer_name === 'Facebook User';
+            
+            if (needsProfileBackfill) {
                const { fetchFacebookProfile } = await import('@/lib/facebook/profile');
                const profile = await fetchFacebookProfile(customerPsid, pageId, supabase);
                if (profile) {
-                 updates.customer_name = profile.name;
-                 updates.customer_profile_pic_url = profile.profile_pic;
+                 if (profile.name && profile.name !== 'Facebook User') {
+                   updates.customer_name = profile.name;
+                 }
+                 if (profile.profile_pic) {
+                   updates.customer_profile_pic_url = profile.profile_pic;
+                 }
                }
             }
 
@@ -345,15 +404,28 @@ async function processMessagingEvent(
                 .select()
                 .single();
               conversation = newConv;
-            } else if (!conversation.customer_profile_pic_url) {
-               // Backfill profile
-               const { fetchFacebookProfile } = await import('@/lib/facebook/profile');
-               const profile = await fetchFacebookProfile(customerPsid, pageId, supabase);
-               if (profile) {
-                 await supabase.from('conversations').update({
-                   customer_name: profile.name,
-                   customer_profile_pic_url: profile.profile_pic
-                 }).eq('id', conversation.id);
+            } else {
+               // Backfill profile if missing
+               const needsProfileBackfill = !conversation.customer_profile_pic_url || 
+                 !conversation.customer_name || 
+                 conversation.customer_name === 'Unknown Customer' ||
+                 conversation.customer_name === 'Facebook User';
+               
+               if (needsProfileBackfill) {
+                 const { fetchFacebookProfile } = await import('@/lib/facebook/profile');
+                 const profile = await fetchFacebookProfile(customerPsid, pageId, supabase);
+                 if (profile) {
+                   const profileUpdates: any = {};
+                   if (profile.name && profile.name !== 'Facebook User') {
+                     profileUpdates.customer_name = profile.name;
+                   }
+                   if (profile.profile_pic) {
+                     profileUpdates.customer_profile_pic_url = profile.profile_pic;
+                   }
+                   if (Object.keys(profileUpdates).length > 0) {
+                     await supabase.from('conversations').update(profileUpdates).eq('id', conversation.id);
+                   }
+                 }
                }
             }
 
@@ -451,23 +523,11 @@ async function processMessagingEvent(
     });
 
     // ========================================
-    // FIND FACEBOOK PAGE
-    // ========================================
-    
-    const { data: fbPage, error: pageError } = await supabase
-      .from('facebook_pages')
-      .select('id, workspace_id')
-      .eq('id', pageId)
-      .single();
-
-    if (pageError || !fbPage) {
-      console.error(`Facebook page not found: ${pageId}`, pageError);
-      return;
-    }
-
-    // ========================================
     // FIND OR CREATE CONVERSATION
     // ========================================
+    
+    // We already have fbPageCheck from source detection, use it
+    const fbPage = fbPageCheck;
     
     let { data: conversation, error: convError } = await supabase
       .from('conversations')
@@ -491,6 +551,7 @@ async function processMessagingEvent(
           customer_name: profile?.name || 'Unknown Customer',
           customer_profile_pic_url: profile?.profile_pic,
           current_state: 'IDLE',
+          control_mode: 'bot', // Default to bot control
           context: { 
             state: 'IDLE',
             cart: [],
@@ -510,16 +571,108 @@ async function processMessagingEvent(
       }
 
       conversation = newConversation;
-    } else if (!conversation.customer_profile_pic_url) {
-       // Backfill profile for existing conversation
-       const { fetchFacebookProfile } = await import('@/lib/facebook/profile');
-       const profile = await fetchFacebookProfile(customerPsid, pageId, supabase);
-       if (profile) {
-         await supabase.from('conversations').update({
-           customer_name: profile.name,
-           customer_profile_pic_url: profile.profile_pic
-         }).eq('id', conversation.id);
+    } else {
+       // Backfill profile for existing conversation if name or pic is missing
+       console.log('\n========================================');
+       console.log('🔄 [BACKFILL CHECK] Checking if profile backfill needed...');
+       console.log(`🔄 [BACKFILL CHECK] Current customer_name: "${conversation.customer_name}"`);
+       console.log(`🔄 [BACKFILL CHECK] Current profile_pic: ${conversation.customer_profile_pic_url ? 'exists' : 'missing'}`);
+       
+       const needsProfileBackfill = !conversation.customer_profile_pic_url || 
+         !conversation.customer_name || 
+         conversation.customer_name === 'Unknown Customer' ||
+         conversation.customer_name === 'Facebook User';
+       
+       console.log(`🔄 [BACKFILL CHECK] Needs backfill: ${needsProfileBackfill}`);
+       console.log('========================================');
+       
+       if (needsProfileBackfill) {
+         console.log('🔄 [BACKFILL] Fetching fresh profile from Facebook...');
+         const { fetchFacebookProfile } = await import('@/lib/facebook/profile');
+         const profile = await fetchFacebookProfile(customerPsid, pageId, supabase);
+         
+         if (profile) {
+           console.log(`🔄 [BACKFILL] Fetched profile - Name: "${profile.name}", Pic: ${profile.profile_pic ? 'yes' : 'no'}`);
+           
+           const profileUpdates: any = {};
+           if (profile.name && profile.name !== 'Facebook User') {
+             profileUpdates.customer_name = profile.name;
+             console.log(`🔄 [BACKFILL] Will update customer_name to: "${profile.name}"`);
+           }
+           if (profile.profile_pic) {
+             profileUpdates.customer_profile_pic_url = profile.profile_pic;
+           }
+           if (Object.keys(profileUpdates).length > 0) {
+             await supabase.from('conversations').update(profileUpdates).eq('id', conversation.id);
+           }
+         }
        }
+    }
+
+    // ========================================
+    // HANDLE OWNER MESSAGE (from Messenger app)
+    // ========================================
+    
+    if (isOwnerMessage) {
+      console.log('👤 [OWNER MESSAGE] Detected owner reply from Messenger app');
+      
+      // Save the owner's message with sender_type = 'owner'
+      await supabase.from('messages').insert({
+        conversation_id: conversation.id,
+        sender: 'page', // Keep 'page' for backward compatibility
+        sender_type: 'owner', // New field to distinguish owner from bot
+        message_text: messageText,
+        message_type: message.attachments ? 'attachment' : 'text',
+        attachments: message.attachments || null,
+      });
+      
+      // Update conversation to hybrid mode and track manual reply
+      const currentMode = conversation.control_mode || 'bot';
+      const newMode = currentMode === 'manual' ? 'manual' : 'hybrid';
+      
+      await supabase
+        .from('conversations')
+        .update({
+          control_mode: newMode,
+          last_manual_reply_at: new Date().toISOString(),
+          last_manual_reply_by: 'owner', // Could be user ID if we track it
+          last_message_at: new Date(timestamp).toISOString(),
+        })
+        .eq('id', conversation.id);
+      
+      console.log(`✅ [OWNER MESSAGE] Saved message, control_mode set to: ${newMode}`);
+      console.log('⏭️ [OWNER MESSAGE] Skipping bot processing');
+      
+      // Skip bot processing entirely for owner messages
+      return;
+    }
+
+    // ========================================
+    // CHECK GLOBAL BOT TOGGLE
+    // ========================================
+    
+    // Check if bot is globally disabled for this page
+    if (fbPage.bot_enabled === false) {
+      console.log(`🛑 Bot disabled for page ${pageId} - skipping processing`);
+      
+      // Still save the customer message to database
+      await supabase.from('messages').insert({
+        conversation_id: conversation.id,
+        sender: 'customer',
+        sender_type: 'customer',
+        message_text: messageText,
+        message_type: message.attachments ? 'attachment' : 'text',
+        attachments: message.attachments || null,
+      });
+      
+      // Update last_message_at
+      await supabase
+        .from('conversations')
+        .update({ last_message_at: new Date(timestamp).toISOString() })
+        .eq('id', conversation.id);
+      
+      console.log('✅ Customer message saved, but bot will not respond');
+      return;
     }
 
     // ========================================
@@ -529,28 +682,169 @@ async function processMessagingEvent(
     await supabase.from('messages').insert({
       conversation_id: conversation.id,
       sender: 'customer',
+      sender_type: 'customer', // New field
       message_text: messageText,
       message_type: message.attachments ? 'attachment' : 'text',
       attachments: message.attachments || null,
     });
+    
+    // Update last_message_at for customer messages
+    await supabase
+      .from('conversations')
+      .update({ last_message_at: new Date(timestamp).toISOString() })
+      .eq('id', conversation.id);
 
     // ========================================
-    // CALL ORCHESTRATOR
+    // CHECK HYBRID CONTROL MODE
+    // ========================================
+    
+    const controlMode = conversation.control_mode || 'bot';
+    const lastManualReplyAt = conversation.last_manual_reply_at;
+    const currentState = conversation.current_state || 'IDLE';
+    const isProtectedState = PROTECTED_STATES.includes(currentState as any);
+    
+    console.log(`🎛️ [CONTROL MODE] Current mode: ${controlMode}`);
+    console.log(`🎛️ [CONTROL MODE] Current state: ${currentState}`);
+    console.log(`🎛️ [CONTROL MODE] Is protected state: ${isProtectedState}`);
+    console.log(`🎛️ [CONTROL MODE] Last manual reply: ${lastManualReplyAt || 'never'}`);
+    
+    // If fully manual mode, skip bot entirely (unless in protected state)
+    if (controlMode === 'manual' && !isProtectedState) {
+      console.log('⏭️ [CONTROL MODE] Manual mode - skipping bot processing');
+      return;
+    } else if (controlMode === 'manual' && isProtectedState) {
+      console.log('🛡️ [CONTROL MODE] Manual mode but in protected state - bot continues for order flow');
+      // Set flag so bot can acknowledge owner message after order completes
+      const context = conversation.context || {};
+      context.owner_interrupted = true;
+      await supabase
+        .from('conversations')
+        .update({ context })
+        .eq('id', conversation.id);
+    }
+    
+    // If hybrid mode, check if owner replied recently (within 30 minutes)
+    if (controlMode === 'hybrid' && lastManualReplyAt) {
+      const HYBRID_PAUSE_MINUTES = 30;
+      const lastReplyTime = new Date(lastManualReplyAt).getTime();
+      const now = Date.now();
+      const minutesSinceLastReply = (now - lastReplyTime) / (1000 * 60);
+      
+      console.log(`🎛️ [CONTROL MODE] Minutes since last manual reply: ${minutesSinceLastReply.toFixed(1)}`);
+      
+      if (minutesSinceLastReply < HYBRID_PAUSE_MINUTES) {
+        // Check if in protected state - if so, don't pause
+        if (isProtectedState) {
+          console.log(`🛡️ [CONTROL MODE] In protected state (${currentState}) - bot continues despite owner reply`);
+          // Set flag so bot can acknowledge owner message after order completes
+          const context = conversation.context || {};
+          context.owner_interrupted = true;
+          await supabase
+            .from('conversations')
+            .update({ context })
+            .eq('id', conversation.id);
+          // Continue to orchestrator (don't return)
+        } else {
+          console.log(`⏭️ [CONTROL MODE] Owner replied ${minutesSinceLastReply.toFixed(1)} mins ago - skipping bot`);
+          return;
+        }
+      } else {
+        console.log(`✅ [CONTROL MODE] ${minutesSinceLastReply.toFixed(1)} mins since last reply - bot can respond`);
+        
+        // Reset to bot mode since pause period has passed
+        await supabase
+          .from('conversations')
+          .update({ control_mode: 'bot' })
+          .eq('id', conversation.id);
+        console.log('🔄 [CONTROL MODE] Reset to bot mode after pause period');
+      }
+    }
+    
+    // Check if bot_pause_until is set (but respect protected states)
+    if (conversation.bot_pause_until && !isProtectedState) {
+      const pauseUntil = new Date(conversation.bot_pause_until).getTime();
+      const now = Date.now();
+      
+      if (now < pauseUntil) {
+        const minutesRemaining = ((pauseUntil - now) / (1000 * 60)).toFixed(1);
+        console.log(`⏭️ [CONTROL MODE] Bot paused for ${minutesRemaining} more minutes - skipping`);
+        return;
+      } else {
+        // Clear expired pause
+        await supabase
+          .from('conversations')
+          .update({ bot_pause_until: null })
+          .eq('id', conversation.id);
+        console.log('🔄 [CONTROL MODE] Bot pause expired, cleared');
+      }
+    } else if (conversation.bot_pause_until && isProtectedState) {
+      console.log('🛡️ [CONTROL MODE] Bot pause ignored due to protected state');
+    }
+
+    // ========================================
+    // CALL ORCHESTRATOR (Bot Processing)
     // ========================================
     
     console.log('🎭 Calling Orchestrator...');
     
-    await processMessage({
-      pageId,
-      customerPsid,
-      messageText: messageText || undefined,
-      imageUrl,
-      workspaceId: fbPage.workspace_id,
-      fbPageId: fbPage.id,
-      conversationId: conversation.id,
-    });
+    // Try to acquire lock for bot processing
+    const lockAcquired = processingLock.acquireLock(conversation.id, 'bot_processing', 15000);
+    
+    if (!lockAcquired) {
+      // Check if owner is currently sending
+      const currentLock = processingLock.isLocked(conversation.id);
+      if (currentLock?.lock_type === 'owner_sending') {
+        console.log('⏸️ [BOT] Owner is sending message, waiting...');
+        const released = await processingLock.waitForLock(conversation.id, 3000);
+        if (!released) {
+          console.log('⏭️ [BOT] Owner still sending, skipping bot response to avoid duplicate');
+          return;
+        }
+        // Try to acquire again
+        if (!processingLock.acquireLock(conversation.id, 'bot_processing', 15000)) {
+          console.log('⏭️ [BOT] Could not acquire lock after waiting, skipping');
+          return;
+        }
+      } else {
+        console.log('⏭️ [BOT] Could not acquire lock, skipping processing');
+        return;
+      }
+    }
 
-    console.log('✅ Message processed successfully');
+    try {
+      // Check one more time if owner replied while we were waiting
+      const { data: freshConv } = await supabase
+        .from('conversations')
+        .select('control_mode, last_manual_reply_at')
+        .eq('id', conversation.id)
+        .single();
+      
+      if (freshConv?.control_mode === 'hybrid' || freshConv?.control_mode === 'manual') {
+        const lastManualReply = freshConv.last_manual_reply_at;
+        if (lastManualReply) {
+          const timeSinceReply = Date.now() - new Date(lastManualReply).getTime();
+          if (timeSinceReply < 5000) { // Owner replied in last 5 seconds
+            console.log('⏭️ [BOT] Owner just replied, aborting bot response');
+            return;
+          }
+        }
+      }
+
+      await processMessage({
+        pageId,
+        customerPsid,
+        messageText: messageText || undefined,
+        imageUrl,
+        workspaceId: fbPage.workspace_id,
+        fbPageId: fbPage.id,
+        conversationId: conversation.id,
+      });
+
+      console.log('✅ Message processed successfully');
+    } finally {
+      // Always release lock
+      processingLock.releaseLock(conversation.id);
+    }
   } catch (error) {
     console.error('❌ Error processing messaging event:', error);
   }

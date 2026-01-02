@@ -23,6 +23,10 @@ CREATE TABLE public.conversations (
   created_at timestamp with time zone DEFAULT now(),
   is_test boolean DEFAULT false,
   customer_profile_pic_url text,
+  control_mode text DEFAULT 'bot'::text CHECK (control_mode IN ('bot', 'manual', 'hybrid')),
+  last_manual_reply_at timestamp with time zone,
+  last_manual_reply_by text,
+  bot_pause_until timestamp with time zone,
   CONSTRAINT conversations_pkey PRIMARY KEY (id),
   CONSTRAINT conversations_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id),
   CONSTRAINT conversations_fb_page_id_fkey FOREIGN KEY (fb_page_id) REFERENCES public.facebook_pages(id)
@@ -34,6 +38,7 @@ CREATE TABLE public.facebook_pages (
   encrypted_access_token text NOT NULL,
   created_at timestamp with time zone DEFAULT now(),
   status text NOT NULL DEFAULT 'connected'::text CHECK (status = ANY (ARRAY['connected'::text, 'disconnected'::text])),
+  bot_enabled boolean NOT NULL DEFAULT true,
   CONSTRAINT facebook_pages_pkey PRIMARY KEY (id),
   CONSTRAINT facebook_pages_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id)
 );
@@ -52,6 +57,7 @@ CREATE TABLE public.messages (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   conversation_id uuid NOT NULL,
   sender text NOT NULL,
+  sender_type text DEFAULT 'customer'::text CHECK (sender_type IN ('customer', 'bot', 'owner')),
   message_text text,
   message_type text,
   attachments jsonb,

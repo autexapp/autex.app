@@ -35,6 +35,7 @@ import { sendMessage } from '@/lib/facebook/messenger';
 import { generateOrderNumber } from './replies';
 import { getCachedSettings, WorkspaceSettings, getDeliveryCharge } from '@/lib/workspace/settings-cache';
 import { AgentTools, ToolResult } from './agent-tools';
+import { getContextManager } from './context-manager';
 
 // ============================================
 // TYPES
@@ -249,8 +250,9 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     if (input.messageText) {
       console.log('🧠 Calling AI Director...');
       
-      // Save context before AI action (for potential rollback)
-      const previousContext = { ...currentContext };
+      // Get context manager and save checkpoint
+      const contextManager = getContextManager();
+      contextManager.saveCheckpoint(currentContext, 'Before AI Director call');
       
       try {
         let decision: AIDirectorDecision | null = null;
@@ -376,6 +378,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
         await supabase.from('messages').insert({
           conversation_id: conversation.id,
           sender: 'bot',
+          sender_type: 'bot',
           message_text: fallbackMessage,
           message_type: 'text',
           created_at: new Date().toISOString(),
@@ -412,6 +415,17 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     
   } catch (error) {
     console.error('❌ Orchestrator error:', error);
+    
+    // Attempt context rollback
+    try {
+      const contextManager = getContextManager();
+      const rolledBackContext = contextManager.rollback();
+      if (rolledBackContext) {
+        console.log('⏪ Context rolled back to previous checkpoint');
+      }
+    } catch (rollbackError) {
+      console.error('⚠️ Rollback failed:', rollbackError);
+    }
     
     // Send error message to user (skip in test mode)
     if (!input.isTestMode) {
@@ -845,8 +859,7 @@ async function executeDecision(
     supabase,
     input.conversationId,
     newState,
-    updatedContext,
-    updatedContext.checkout?.customerName || conversation.customer_name
+    updatedContext
   );
   
   // Send response to user (only if not empty - product cards are sent separately)
@@ -892,6 +905,7 @@ async function executeDecision(
     await supabase.from('messages').insert({
       conversation_id: input.conversationId,
       sender: 'bot',
+      sender_type: 'bot',
       message_text: response,
       message_type: 'text',
     });
@@ -1246,13 +1260,14 @@ async function createOrderInDb(
 
 /**
  * Updates conversation context in database
+ * NOTE: We do NOT update customer_name here to preserve the Facebook profile name.
+ * The checkout customer name is stored in context.checkout.customerName instead.
  */
 async function updateContextInDb(
   supabase: any,
   conversationId: string,
   newState: ConversationState,
-  updatedContext: ConversationContext,
-  customerName?: string
+  updatedContext: ConversationContext
 ): Promise<void> {
   console.log('💾 Updating conversation context...');
   
@@ -1261,7 +1276,6 @@ async function updateContextInDb(
     .update({
       current_state: newState,
       context: updatedContext,
-      customer_name: customerName,
       last_message_at: new Date().toISOString(),
     })
     .eq('id', conversationId);

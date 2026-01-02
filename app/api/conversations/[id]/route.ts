@@ -34,6 +34,7 @@ export async function GET(
         messages (
           id,
           sender,
+          sender_type,
           message_text,
           message_type,
           attachments,

@@ -18,6 +18,12 @@ export async function fetchFacebookProfile(
   supabase: any // Using any for now to avoid complex type issues with the passed client
 ): Promise<FacebookProfile | null> {
   try {
+    console.log('\n========================================');
+    console.log('🔍 [PROFILE FETCH] Starting profile fetch...');
+    console.log(`🔍 [PROFILE FETCH] PSID: ${psid}`);
+    console.log(`🔍 [PROFILE FETCH] Page ID: ${pageId}`);
+    console.log('========================================');
+    
     const { decryptToken } = await import('@/lib/facebook/crypto-utils');
     
     // Get page access token
@@ -28,11 +34,12 @@ export async function fetchFacebookProfile(
       .single();
     
     if (!pageData) {
-      console.error(`❌ [PROFILE] Page not found in DB: ${pageId}`);
+      console.error(`❌ [PROFILE FETCH] Page not found in DB: ${pageId}`);
       return null;
     }
 
     const accessToken = decryptToken(pageData.encrypted_access_token);
+    console.log(`🔍 [PROFILE FETCH] Access token retrieved: ${accessToken ? 'yes' : 'no'}`);
     
     // Generate App Secret Proof (Best Practice & Required if enabled in App Settings)
     const { generateAppSecretProof } = await import('@/lib/facebook/crypto-utils');
@@ -42,38 +49,43 @@ export async function fetchFacebookProfile(
     // Use v21.0 with name and picture
     const profileUrl = `https://graph.facebook.com/v21.0/${psid}?fields=name,picture&access_token=${accessToken}${proofParam}`;
     
-    console.log(`🔍 [PROFILE] Fetching for PSID: ${psid} using Page ID: ${pageId}`);
+    console.log(`🔍 [PROFILE FETCH] Calling Facebook Graph API...`);
     
     const response = await fetch(profileUrl);
     
     if (!response.ok) {
       const errorText = await response.text();
+      console.error(`❌ [PROFILE FETCH] API Error: ${response.status}`);
+      console.error(`❌ [PROFILE FETCH] Error body: ${errorText}`);
       
       // Specific handling for "Object does not exist" (Code 100, Subcode 33)
       // This is common for users who have strict privacy settings or during Dev Mode testing
       if (errorText.includes('"code":100') && errorText.includes('"subcode":33')) {
-        console.log(`ℹ️ [PROFILE] User ${psid} has privacy settings restricting access. Using default profile.`);
+        console.log(`ℹ️ [PROFILE FETCH] User ${psid} has privacy settings restricting access. Using default profile.`);
         return {
           name: 'Facebook User',
           profile_pic: undefined // UI will show default avatar
         };
       }
       
-      console.error(`❌ [PROFILE] Fetch failed: ${response.status} - ${errorText}`);
       return null;
     }
 
     const data = await response.json();
     const fullName = data.name || 'Facebook User';
+    const profilePic = data.picture?.data?.url;
     
-    console.log(`✅ [PROFILE] Fetched: ${fullName}`);
+    console.log(`✅ [PROFILE FETCH] SUCCESS!`);
+    console.log(`✅ [PROFILE FETCH] Name from Facebook: "${fullName}"`);
+    console.log(`✅ [PROFILE FETCH] Profile pic: ${profilePic ? 'yes' : 'no'}`);
+    console.log('========================================\n');
 
     return {
       name: fullName,
-      profile_pic: data.picture?.data?.url
+      profile_pic: profilePic
     };
   } catch (error) {
-    console.error('❌ [PROFILE] Error fetching profile:', error);
+    console.error('❌ [PROFILE FETCH] Error:', error);
     return null;
   }
 }

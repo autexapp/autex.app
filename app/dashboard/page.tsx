@@ -30,6 +30,7 @@ interface FacebookPage {
   page_id: string
   page_name: string
   created_at: string
+  bot_enabled: boolean
 }
 
 import { DashboardSkeleton } from "@/components/skeletons/dashboard-skeleton"
@@ -158,6 +159,48 @@ export default function DashboardPage() {
             icon={MessageSquare}
           />
         </div>
+
+        {/* Bot Status Indicator */}
+        {facebookPage && (
+          <Link href="/dashboard/settings?tab=facebook">
+            <div className={`flex items-center justify-between p-4 rounded-lg border cursor-pointer transition-colors hover:border-primary ${
+              facebookPage.bot_enabled 
+                ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' 
+                : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+            }`}>
+              <div className="flex items-center gap-3">
+                <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
+                  facebookPage.bot_enabled 
+                    ? 'bg-green-100 dark:bg-green-900/50' 
+                    : 'bg-red-100 dark:bg-red-900/50'
+                }`}>
+                  <Bot className={`h-5 w-5 ${
+                    facebookPage.bot_enabled 
+                      ? 'text-green-600 dark:text-green-400' 
+                      : 'text-red-600 dark:text-red-400'
+                  }`} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">
+                      {facebookPage.bot_enabled ? '🤖 Bot: Active' : '🛑 Bot: Disabled'}
+                    </span>
+                  </div>
+                  <p className={`text-sm ${
+                    facebookPage.bot_enabled 
+                      ? 'text-green-600 dark:text-green-400' 
+                      : 'text-red-600 dark:text-red-400'
+                  }`}>
+                    {facebookPage.bot_enabled 
+                      ? 'Automatically responding to customer messages' 
+                      : 'Bot is disabled. You need to reply manually.'}
+                  </p>
+                </div>
+              </div>
+              <Settings className="h-5 w-5 text-muted-foreground" />
+            </div>
+          </Link>
+        )}
 
         {/* Alerts */}
         <Alerts />

@@ -1,10 +1,13 @@
 import { Skeleton } from "@/components/ui/skeleton"
 import { TopBar } from "@/components/dashboard/top-bar"
+import { LoadingText } from "@/components/ui/loading-text"
 
 export function AdminSkeleton() {
   return (
     <>
       <TopBar title="Admin Dashboard" />
+      
+      <LoadingText />
       
       <div className="p-4 lg:p-6 space-y-6">
         {/* Header Skeleton */}

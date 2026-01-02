@@ -76,35 +76,47 @@ export type Database = {
       }
       conversations: {
         Row: {
+          bot_pause_until: string | null
           context: Json | null
+          control_mode: string | null
           created_at: string | null
           current_state: string | null
           customer_name: string | null
           customer_psid: string
           fb_page_id: number
           id: string
+          last_manual_reply_at: string | null
+          last_manual_reply_by: string | null
           last_message_at: string | null
           workspace_id: string
         }
         Insert: {
+          bot_pause_until?: string | null
           context?: Json | null
+          control_mode?: string | null
           created_at?: string | null
           current_state?: string | null
           customer_name?: string | null
           customer_psid: string
           fb_page_id: number
           id?: string
+          last_manual_reply_at?: string | null
+          last_manual_reply_by?: string | null
           last_message_at?: string | null
           workspace_id: string
         }
         Update: {
+          bot_pause_until?: string | null
           context?: Json | null
+          control_mode?: string | null
           created_at?: string | null
           current_state?: string | null
           customer_name?: string | null
           customer_psid?: string
           fb_page_id?: number
           id?: string
+          last_manual_reply_at?: string | null
+          last_manual_reply_by?: string | null
           last_message_at?: string | null
           workspace_id?: string
         }
@@ -127,6 +139,7 @@ export type Database = {
       }
       facebook_pages: {
         Row: {
+          bot_enabled: boolean
           created_at: string | null
           encrypted_access_token: string
           id: number
@@ -134,6 +147,7 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          bot_enabled?: boolean
           created_at?: string | null
           encrypted_access_token: string
           id: number
@@ -141,6 +155,7 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          bot_enabled?: boolean
           created_at?: string | null
           encrypted_access_token?: string
           id?: number
@@ -204,6 +219,7 @@ export type Database = {
           message_text: string | null
           message_type: string | null
           sender: string
+          sender_type: string | null
         }
         Insert: {
           attachments?: Json | null
@@ -213,6 +229,7 @@ export type Database = {
           message_text?: string | null
           message_type?: string | null
           sender: string
+          sender_type?: string | null
         }
         Update: {
           attachments?: Json | null
@@ -222,6 +239,7 @@ export type Database = {
           message_text?: string | null
           message_type?: string | null
           sender?: string
+          sender_type?: string | null
         }
         Relationships: [
           {

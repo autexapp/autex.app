@@ -12,12 +12,16 @@ import { Search, Send, ArrowLeft, ExternalLink, Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { RequireFacebookPage } from "@/components/dashboard/require-facebook-page"
+import { ConversationControlPanel } from "@/components/dashboard/conversation-control-panel"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { AlertTriangle, Power } from "lucide-react"
 
 type ConversationStatus = "IDLE" | "AWAITING_NAME" | "AWAITING_PHONE" | "AWAITING_ADDRESS" | "ORDER_COMPLETE"
 
 interface Message {
   id: string
   sender: string
+  sender_type?: 'customer' | 'bot' | 'owner' | null
   message_text: string
   message_type: string
   created_at: string
@@ -37,6 +41,10 @@ interface Conversation {
   last_message: Message | null
   messages?: Message[]
   customer_profile_pic_url?: string | null
+  control_mode?: 'bot' | 'manual' | 'hybrid' | null
+  last_manual_reply_at?: string | null
+  last_manual_reply_by?: string | null
+  bot_pause_until?: string | null
 }
 
 const statusIndicator: Record<string, string> = {
@@ -55,12 +63,63 @@ const statusLabels: Record<string, string> = {
   ORDER_COMPLETE: "Completed",
 }
 
+const HYBRID_PAUSE_MINUTES = 30
+
+const getControlModeBadge = (conv: Conversation) => {
+  const mode = conv.control_mode || 'bot'
+  const lastManualReplyAt = conv.last_manual_reply_at
+  
+  // Calculate countdown for hybrid mode
+  let countdown: number | null = null
+  if (mode === 'hybrid' && lastManualReplyAt) {
+    const lastReplyTime = new Date(lastManualReplyAt).getTime()
+    const resumeTime = lastReplyTime + (HYBRID_PAUSE_MINUTES * 60 * 1000)
+    const now = Date.now()
+    const remainingMs = resumeTime - now
+    if (remainingMs > 0) {
+      countdown = Math.ceil(remainingMs / (60 * 1000))
+    }
+  }
+  
+  switch (mode) {
+    case 'bot':
+      return {
+        icon: '🤖',
+        label: 'Bot',
+        className: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
+        needsAttention: false,
+      }
+    case 'manual':
+      return {
+        icon: '👨‍💼',
+        label: 'Manual',
+        className: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400',
+        needsAttention: true,
+      }
+    case 'hybrid':
+      return {
+        icon: '🔄',
+        label: countdown ? `Hybrid (${countdown}m)` : 'Hybrid',
+        className: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400',
+        needsAttention: false,
+      }
+    default:
+      return {
+        icon: '🤖',
+        label: 'Bot',
+        className: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
+        needsAttention: false,
+      }
+  }
+}
+
 import { ConversationsSkeleton } from "@/components/skeletons/conversations-skeleton"
 
 export default function ConversationsPage() {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [controlModeFilter, setControlModeFilter] = useState("all")
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null)
   const [newMessage, setNewMessage] = useState("")
@@ -68,6 +127,9 @@ export default function ConversationsPage() {
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
   const [sendingMessage, setSendingMessage] = useState(false)
+  const [pageBotEnabled, setPageBotEnabled] = useState<boolean | null>(null)
+  const [currentPageId, setCurrentPageId] = useState<string | null>(null)
+  const [enablingBot, setEnablingBot] = useState(false)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -81,6 +143,7 @@ export default function ConversationsPage() {
 
   useEffect(() => {
     fetchConversations()
+    fetchPageBotStatus()
   }, [statusFilter, searchQuery])
 
   // Polling effect for real-time message updates
@@ -125,6 +188,45 @@ export default function ConversationsPage() {
       console.error("Error fetching conversations:", error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchPageBotStatus = async () => {
+    try {
+      const response = await fetch('/api/facebook/pages')
+      if (!response.ok) return
+      
+      const data = await response.json()
+      if (data.pages && data.pages.length > 0) {
+        const page = data.pages[0]
+        setPageBotEnabled(page.bot_enabled)
+        setCurrentPageId(String(page.id))
+      }
+    } catch (error) {
+      console.error('Error fetching page bot status:', error)
+    }
+  }
+
+  const handleEnableBot = async () => {
+    if (!currentPageId) return
+    
+    try {
+      setEnablingBot(true)
+      const response = await fetch(`/api/facebook/pages/${currentPageId}/toggle-bot`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bot_enabled: true }),
+      })
+
+      if (!response.ok) throw new Error('Failed to enable bot')
+
+      setPageBotEnabled(true)
+      toast.success('🤖 Bot enabled for all conversations')
+    } catch (error) {
+      console.error('Error enabling bot:', error)
+      toast.error('Failed to enable bot')
+    } finally {
+      setEnablingBot(false)
     }
   }
 
@@ -246,16 +348,41 @@ export default function ConversationsPage() {
     }
   }
 
-  const getSenderLabel = (sender: string) => {
-    if (sender === 'human') return 'You'
-    if (sender === 'bot') return 'Bot'
+  const getSenderLabel = (message: Message) => {
+    const senderType = message.sender_type || message.sender
+    if (senderType === 'owner' || message.sender === 'page' || message.sender === 'human') {
+      return '👨‍💼 You'
+    }
+    if (senderType === 'bot') {
+      return '🤖 Bot'
+    }
     return 'Customer'
   }
 
-  const getSenderBgColor = (sender: string) => {
-    if (sender === 'human') return 'bg-blue-500/10 text-foreground'
-    if (sender === 'bot') return 'bg-muted text-foreground'
-    return 'bg-primary/10 text-foreground'
+  const getSenderBgColor = (message: Message) => {
+    const senderType = message.sender_type || message.sender
+    // Owner messages (from dashboard or Messenger app)
+    if (senderType === 'owner' || message.sender === 'page' || message.sender === 'human') {
+      return 'bg-green-100 dark:bg-green-900/30 text-foreground'
+    }
+    // Bot messages
+    if (senderType === 'bot') {
+      return 'bg-blue-100 dark:bg-blue-900/30 text-foreground opacity-95'
+    }
+    // Customer messages
+    return 'bg-gray-100 dark:bg-gray-800 text-foreground'
+  }
+
+  const isRightAligned = (message: Message) => {
+    const senderType = message.sender_type || message.sender
+    // Customer messages align left, everything else (bot, owner, page) aligns right
+    return senderType !== 'customer' && message.sender !== 'customer'
+  }
+
+  const showMessengerBadge = (message: Message) => {
+    // Show badge if owner message came from Messenger (not dashboard)
+    // Dashboard messages use sender='human', Messenger app uses sender='page' with sender_type='owner'
+    return message.sender_type === 'owner' && message.sender === 'page'
   }
 
   const getOrderIdFromContext = (context: any) => {
@@ -274,6 +401,33 @@ export default function ConversationsPage() {
   return (
     <RequireFacebookPage>
       <TopBar title="Conversations" />
+
+      {/* Global Bot Disabled Warning Banner */}
+      {pageBotEnabled === false && (
+        <Alert className="mx-4 mt-4 border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800">
+          <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+          <AlertDescription className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <span className="font-semibold text-red-700 dark:text-red-400">⚠️ Bot is Disabled for All Conversations</span>
+              <p className="text-sm text-red-600 dark:text-red-300 mt-0.5">
+                You're in manual-only mode. The bot will not respond to any customer messages.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              onClick={handleEnableBot}
+              disabled={enablingBot}
+              className="bg-green-600 hover:bg-green-700 text-white whitespace-nowrap"
+            >
+              {enablingBot ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Enabling...</>
+              ) : (
+                <><Power className="h-4 w-4 mr-2" /> Enable Bot</>
+              )}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="flex h-[calc(100vh-4rem)]">
         {/* Conversations List - Left Panel */}
@@ -310,6 +464,24 @@ export default function ConversationsPage() {
                 </TabsTrigger>
               </TabsList>
             </Tabs>
+            
+            {/* Control Mode Filter */}
+            <Tabs value={controlModeFilter} onValueChange={setControlModeFilter}>
+              <TabsList className="w-full bg-muted/50">
+                <TabsTrigger value="all" className="flex-1 text-xs">
+                  All Modes
+                </TabsTrigger>
+                <TabsTrigger value="bot" className="flex-1 text-xs">
+                  🤖 Bot
+                </TabsTrigger>
+                <TabsTrigger value="manual" className="flex-1 text-xs">
+                  👨‍💼 Manual
+                </TabsTrigger>
+                <TabsTrigger value="hybrid" className="flex-1 text-xs">
+                  🔄 Hybrid
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
 
           {/* Conversation List */}
@@ -323,41 +495,64 @@ export default function ConversationsPage() {
               </div>
             ) : (
               <div className="divide-y divide-border">
-                {conversations.map((conv) => (
-                  <button
-                    key={conv.id}
-                    onClick={() => handleSelectConversation(conv)}
-                    className={cn(
-                      "w-full p-4 text-left hover:bg-muted/50 transition-colors",
-                      selectedConversation?.id === conv.id && "bg-sidebar-accent",
-                    )}
-                  >
-                    <div className="flex items-start gap-3">
-                      <Avatar className="h-10 w-10">
-                        <AvatarImage src={conv.customer_profile_pic_url || undefined} alt={conv.customer_name} />
-                        <AvatarFallback className="bg-primary text-primary-foreground text-sm">
-                          {(conv.customer_name || 'U').substring(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-medium text-sm truncate">
-                            {conv.customer_name || "Unknown Customer"}
-                          </span>
-                          <span className="text-xs text-muted-foreground whitespace-nowrap">
-                            {formatTime(conv.last_message_at)}
-                          </span>
+                {conversations
+                  .filter(conv => controlModeFilter === 'all' || (conv.control_mode || 'bot') === controlModeFilter)
+                  .map((conv) => {
+                    const badge = getControlModeBadge(conv)
+                    return (
+                      <button
+                        key={conv.id}
+                        onClick={() => handleSelectConversation(conv)}
+                        className={cn(
+                          "w-full p-4 text-left hover:bg-muted/50 transition-colors relative",
+                          selectedConversation?.id === conv.id && "bg-sidebar-accent",
+                          badge.needsAttention && "border-l-2 border-l-orange-500",
+                        )}
+                      >
+                        <div className="flex items-start gap-3">
+                          <Avatar className="h-10 w-10">
+                            <AvatarImage src={conv.customer_profile_pic_url || undefined} alt={conv.customer_name} />
+                            <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+                              {(conv.customer_name || 'U').substring(0, 2).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="font-medium text-sm truncate">
+                                  {conv.customer_name || "Unknown Customer"}
+                                </span>
+                                {/* Control Mode Badge */}
+                                <span className={cn(
+                                  "text-[10px] px-1.5 py-0.5 rounded flex-shrink-0",
+                                  badge.className
+                                )}>
+                                  {badge.icon} {badge.label}
+                                </span>
+                              </div>
+                              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                {formatTime(conv.last_message_at)}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <div className={cn("h-2 w-2 rounded-full flex-shrink-0", statusIndicator[conv.current_state] || "bg-muted-foreground/30")} />
+                              <p className="text-xs text-muted-foreground truncate">
+                                {conv.last_message?.message_text || "No messages"}
+                              </p>
+                            </div>
+                            {/* Needs Attention indicator */}
+                            {badge.needsAttention && (
+                              <div className="flex items-center gap-1 mt-1">
+                                <span className="text-[10px] text-orange-600 dark:text-orange-400 font-medium">
+                                  ⚠️ Needs your reply
+                                </span>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <div className={cn("h-2 w-2 rounded-full flex-shrink-0", statusIndicator[conv.current_state] || "bg-muted-foreground/30")} />
-                          <p className="text-xs text-muted-foreground truncate">
-                            {conv.last_message?.message_text || "No messages"}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                ))}
+                      </button>
+                    )
+                  })}
               </div>
             )}
           </div>
@@ -382,9 +577,16 @@ export default function ConversationsPage() {
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1">
-                  <h3 className="font-semibold">
-                    {selectedConversation.customer_name || "Unknown Customer"}
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold">
+                      {selectedConversation.customer_name || "Unknown Customer"}
+                    </h3>
+                    {pageBotEnabled === false && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">
+                        🛑 Bot Disabled
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     {statusLabels[selectedConversation.current_state] || selectedConversation.current_state}
                   </p>
@@ -401,6 +603,19 @@ export default function ConversationsPage() {
                 )}
               </div>
 
+              {/* Control Panel */}
+              <ConversationControlPanel 
+                conversation={selectedConversation}
+                onModeChange={(mode) => {
+                  // Update local state with new mode
+                  setSelectedConversation(prev => prev ? {
+                    ...prev,
+                    control_mode: mode,
+                    last_manual_reply_at: mode === 'bot' ? null : prev.last_manual_reply_at,
+                  } : prev)
+                }}
+              />
+
               {/* Messages */}
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {detailLoading ? (
@@ -414,18 +629,59 @@ export default function ConversationsPage() {
                         selectedConversation.messages.map((message) => (
                           <div
                             key={message.id}
-                            className={cn("flex flex-col", message.sender === "customer" ? "items-end" : "items-start")}
+                            className={cn("flex flex-col", isRightAligned(message) ? "items-end" : "items-start")}
                           >
-                            <span className="text-[10px] text-muted-foreground mb-1 px-1">
-                              {getSenderLabel(message.sender)}
-                            </span>
+                            <div className="flex items-center gap-1.5 mb-1 px-1">
+                              <span className="text-[10px] text-muted-foreground">
+                                {getSenderLabel(message)}
+                              </span>
+                              {showMessengerBadge(message) && (
+                                <span className="text-[9px] bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">
+                                  via Messenger
+                                </span>
+                              )}
+                            </div>
                             <div
                               className={cn(
                                 "max-w-[70%] rounded-lg px-4 py-2",
-                                getSenderBgColor(message.sender),
+                                getSenderBgColor(message),
                               )}
                             >
-                              <p className="text-sm whitespace-pre-line">{message.message_text}</p>
+                              {/* Render image attachments */}
+                              {message.attachments && Array.isArray(message.attachments) && message.attachments.length > 0 && (
+                                <div className="space-y-2 mb-2">
+                                  {message.attachments
+                                    .filter((att: any) => att.type === 'image' && att.payload?.url)
+                                    .map((att: any, idx: number) => (
+                                      <a 
+                                        key={idx} 
+                                        href={att.payload.url} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="block"
+                                      >
+                                        <img 
+                                          src={att.payload.url} 
+                                          alt={`Attachment ${idx + 1}`}
+                                          className="max-w-full max-h-64 rounded-md object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                                          onError={(e) => {
+                                            // Hide broken images
+                                            (e.target as HTMLImageElement).style.display = 'none'
+                                          }}
+                                        />
+                                      </a>
+                                    ))
+                                  }
+                                </div>
+                              )}
+                              {/* Render text message */}
+                              {message.message_text && (
+                                <p className="text-sm whitespace-pre-line">{message.message_text}</p>
+                              )}
+                              {/* Show placeholder if no text and no valid attachments */}
+                              {!message.message_text && (!message.attachments || message.attachments.length === 0) && (
+                                <p className="text-sm text-muted-foreground italic">[Empty message]</p>
+                              )}
                               <p className="text-[10px] text-muted-foreground mt-1">
                                 {formatMessageTime(message.created_at)}
                                 {message.id.startsWith('temp-') && (

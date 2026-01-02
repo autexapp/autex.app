@@ -1,10 +1,13 @@
 import { Skeleton } from "@/components/ui/skeleton"
 import { TopBar } from "@/components/dashboard/top-bar"
+import { LoadingText } from "@/components/ui/loading-text"
 
 export function ConversationsSkeleton() {
   return (
     <>
       <TopBar title="Conversations" />
+      
+      <LoadingText />
       
       <div className="flex h-[calc(100vh-4rem)]">
         {/* Conversations List Skeleton - Left Panel */}

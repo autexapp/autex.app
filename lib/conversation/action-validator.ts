@@ -35,7 +35,10 @@ export interface ValidationResult {
     | 'MISSING_CHECKOUT_INFO'
     | 'INVALID_PHONE'
     | 'EMPTY_CART'
-    | 'INVALID_ACTION';
+    | 'INVALID_ACTION'
+    | 'OUT_OF_STOCK'         // NEW: Stock not available
+    | 'INCOMPLETE_ADDRESS'   // NEW: Address missing info
+    | 'PREMATURE_PAYMENT';   // NEW: Payment before order confirmed
 }
 
 // ============================================
@@ -456,6 +459,18 @@ export function createValidationErrorDecision(
       // Internal error - use generic message
       response = 'দুঃখিত, একটা সমস্যা হয়েছে। 😔 আবার চেষ্টা করুন।';
       break;
+      
+    case 'OUT_OF_STOCK':
+      response = validationResult.suggestion || 'দুঃখিত, এই পণ্যটি stock এ নেই। 😔';
+      break;
+      
+    case 'INCOMPLETE_ADDRESS':
+      response = validationResult.suggestion || 'অনুগ্রহ করে সম্পূর্ণ ঠিকানা দিন। 📍\n\nযেমন: House 123, Road 4, Dhanmondi, Dhaka';
+      break;
+      
+    case 'PREMATURE_PAYMENT':
+      response = validationResult.suggestion || 'আগে order confirm করুন। তারপর payment details পাঠান।';
+      break;
   }
   
   return {
@@ -465,4 +480,144 @@ export function createValidationErrorDecision(
     confidence: 100,
     reasoning: `Validation error: ${validationResult.error}`,
   };
+}
+
+// ============================================
+// NEW VALIDATORS (Phase 2 Enhancement)
+// ============================================
+
+/**
+ * Validates stock availability before adding to cart
+ * 
+ * @param productId - Product to check
+ * @param requestedQty - Quantity requested
+ * @param workspaceId - Workspace ID
+ * @returns ValidationResult
+ */
+export async function validateStockAvailability(
+  productId: string,
+  requestedQty: number,
+  workspaceId: string
+): Promise<ValidationResult> {
+  try {
+    const supabase = createClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      }
+    );
+    
+    const { data: product, error } = await supabase
+      .from('products')
+      .select('id, name, stock_quantity')
+      .eq('id', productId)
+      .eq('workspace_id', workspaceId)
+      .single();
+    
+    if (error || !product) {
+      return {
+        valid: false,
+        error: 'Product not found',
+        failedValidation: 'INVALID_PRODUCT',
+      };
+    }
+    
+    const stockQty = (product as any).stock_quantity ?? (product as any).stock ?? 0;
+    
+    if (stockQty <= 0) {
+      return {
+        valid: false,
+        error: `${product.name} is out of stock`,
+        suggestion: `দুঃখিত, "${product.name}" stock এ নেই। 😔\n\nNotify করব stock এ আসলে?`,
+        failedValidation: 'OUT_OF_STOCK',
+      };
+    }
+    
+    if (stockQty < requestedQty) {
+      return {
+        valid: false,
+        error: `Only ${stockQty} available, user requested ${requestedQty}`,
+        suggestion: `Stock এ মাত্র ${stockQty}টা আছে। ${stockQty}টা নিবেন?`,
+        failedValidation: 'OUT_OF_STOCK',
+      };
+    }
+    
+    return { valid: true };
+    
+  } catch (error) {
+    console.error('Stock validation error:', error);
+    // Don't block on errors - let it through
+    return { valid: true };
+  }
+}
+
+/**
+ * Validates address has minimum required information
+ * 
+ * @param address - Address string
+ * @returns ValidationResult
+ */
+export function validateAddressCompleteness(address: string): ValidationResult {
+  if (!address || address.trim().length < 10) {
+    return {
+      valid: false,
+      error: 'Address too short',
+      suggestion: 'অনুগ্রহ করে সম্পূর্ণ ঠিকানা দিন।\n\nযেমন: House 123, Road 4, Dhanmondi, Dhaka',
+      failedValidation: 'INCOMPLETE_ADDRESS',
+    };
+  }
+  
+  // Check for area/city
+  const areaKeywords = [
+    'dhaka', 'ঢাকা', 'chittagong', 'চট্টগ্রাম', 'sylhet', 'সিলেট',
+    'rajshahi', 'রাজশাহী', 'khulna', 'খুলনা', 'barishal', 'বরিশাল',
+    'rangpur', 'রংপুর', 'mymensingh', 'ময়মনসিংহ',
+    'gulshan', 'গুলশান', 'banani', 'বনানী', 'dhanmondi', 'ধানমন্ডি',
+    'mirpur', 'মিরপুর', 'uttara', 'উত্তরা', 'mohammadpur', 'মোহাম্মদপুর',
+    'gazipur', 'গাজীপুর', 'narayanganj', 'নারায়ণগঞ্জ', 'comilla', 'কুমিল্লা',
+  ];
+  
+  const hasArea = areaKeywords.some(keyword => 
+    address.toLowerCase().includes(keyword)
+  );
+  
+  if (!hasArea) {
+    return {
+      valid: false,
+      error: 'Missing area/city',
+      suggestion: 'কোন এলাকায় ডেলিভারি করতে হবে?\n\nযেমন: Gulshan, Dhanmondi, Mirpur',
+      failedValidation: 'INCOMPLETE_ADDRESS',
+    };
+  }
+  
+  return { valid: true };
+}
+
+/**
+ * Validates payment is not sent before order confirmed
+ * 
+ * @param currentState - Current conversation state
+ * @returns ValidationResult
+ */
+export function validatePaymentTiming(currentState: ConversationState): ValidationResult {
+  // Payment digits should only be collected after order is confirmed
+  const validStatesForPayment: ConversationState[] = [
+    'COLLECTING_PAYMENT_DIGITS',
+    'CONFIRMING_ORDER', // User can offer advance payment here
+  ];
+  
+  if (!validStatesForPayment.includes(currentState)) {
+    return {
+      valid: false,
+      error: 'Payment sent before order confirmed',
+      suggestion: 'আগে order confirm করুন! 📋\n\nOrder confirm হলে payment details নেওয়া হবে।',
+      failedValidation: 'PREMATURE_PAYMENT',
+    };
+  }
+  
+  return { valid: true };
 }

@@ -936,6 +936,356 @@ Response:
   "response": "অর্ডার স্ট্যাটাস দেখছি... 🕵️‍♂️",
   "confidence": 95,
   "reasoning": "User gave phone for order tracking - calling tool"
+}
+
+---
+**CATEGORY 13: AMBIGUOUS QUESTIONS (ASK FOR CLARIFICATION)**
+---
+
+**STRATEGY:** When user input is vague, ask clarifying questions instead of guessing.
+
+Example 34 - Vague Question Without Context:
+User: "এটা কি?"
+State: IDLE (no product context)
+Response:
+{
+  "action": "SEND_RESPONSE",
+  "response": "${emoji ? '🤔 ' : ''}আপনি কোন পণ্য সম্পর্কে জানতে চাচ্ছেন?\\n\\nদয়া করে পণ্যের ছবি পাঠান অথবা নাম বলুন।",
+  "newState": "IDLE",
+  "confidence": 30,
+  "reasoning": "User question too vague without product context - asking for clarification"
+}
+
+Example 35 - "More?" Without Clear Context:
+User: "আরো আছে?"
+State: IDLE (no recent product interaction)
+Response:
+{
+  "action": "SEND_RESPONSE",
+  "response": "${emoji ? '🛍️ ' : ''}কোন ধরনের পণ্য দেখতে চান?\\n\\nযেমন: T-shirt, Polo, Saree, Pant ইত্যাদি",
+  "newState": "IDLE",
+  "confidence": 40,
+  "reasoning": "User asked for more but no context - asking what category"
+}
+
+Example 36 - Incomplete Order Intent:
+User: "order"
+State: IDLE (cart empty)
+Response:
+{
+  "action": "SEND_RESPONSE",
+  "response": "${emoji ? '📸 ' : ''}অর্ডার করতে প্রথমে পণ্যের ছবি পাঠান!\\n\\nআমরা ছবি দেখে product চিনতে পারি।",
+  "newState": "IDLE",
+  "confidence": 85,
+  "reasoning": "User wants to order but cart is empty - asking for product image"
+}
+
+Example 37 - Size Question Without Product:
+User: "size?"
+State: IDLE (no product in cart)
+Response:
+{
+  "action": "SEND_RESPONSE",
+  "response": "${emoji ? '👕 ' : ''}কোন পণ্যের size জানতে চান?\\n\\nপণ্যের ছবি পাঠান, আমি size বলে দিবো।",
+  "newState": "IDLE",
+  "confidence": 50,
+  "reasoning": "User asked about size but no product selected - need product first"
+}
+
+Example 38 - Ambiguous "Yes" Without Context:
+User: "hae"
+State: IDLE (no pending question)
+Response:
+{
+  "action": "SEND_RESPONSE",
+  "response": "${emoji ? '😊 ' : ''}কিছু অর্ডার করতে চান?\\n\\nপণ্যের ছবি পাঠান অথবা কি খুঁজছেন বলুন।",
+  "newState": "IDLE",
+  "confidence": 40,
+  "reasoning": "User said yes but no pending question - asking what they want"
+}
+
+---
+**CATEGORY 14: CONTRADICTIONS/CORRECTIONS (HANDLE USER CHANGES)**
+---
+
+**STRATEGY:** When user corrects previous information, update it and confirm the change.
+
+Example 39 - Phone Number Correction:
+User: "না আমার নাম্বার 01712345678"
+State: COLLECTING_ADDRESS
+Context: checkout.customerPhone = "01812345678"
+Response:
+{
+  "action": "UPDATE_CHECKOUT",
+  "actionData": { "customerPhone": "01712345678" },
+  "response": "${emoji ? '✅ ' : ''}ঠিক আছে! Phone number update করা হয়েছে: 01712345678\\n\\nএখন আপনার ঠিকানা দিন ${emoji ? '📍' : ''}",
+  "newState": "COLLECTING_ADDRESS",
+  "confidence": 95,
+  "reasoning": "User correcting phone - update and continue with address"
+}
+
+Example 40 - Cancel During Checkout:
+User: "আমি নিব না"
+State: CONFIRMING_ORDER
+Response:
+{
+  "action": "RESET_CONVERSATION",
+  "response": "${emoji ? '✅ ' : ''}কোনো সমস্যা নেই! Order cancel করা হয়েছে।\\n\\nঅন্য কোনো পণ্য দেখতে চান? ছবি পাঠান ${emoji ? '📸' : ''}",
+  "newState": "IDLE",
+  "updatedContext": { "cart": [], "checkout": {} },
+  "confidence": 100,
+  "reasoning": "User cancelled order - reset everything"
+}
+
+Example 41 - Name Correction:
+User: "sorry, ami Rafiq na, ami Rahim"
+State: COLLECTING_PHONE
+Context: checkout.customerName = "Rafiq"
+Response:
+{
+  "action": "UPDATE_CHECKOUT",
+  "actionData": { "customerName": "Rahim" },
+  "response": "${emoji ? '✅ ' : ''}নাম update করা হয়েছে: Rahim\\n\\n${emoji ? '📱 ' : ''}এখন আপনার ফোন নম্বর দিন:",
+  "newState": "COLLECTING_PHONE",
+  "confidence": 95,
+  "reasoning": "User correcting name - update and continue"
+}
+
+Example 42 - Change Product Mid-Flow:
+User: "wait, ei product na, onno ta chai"
+State: COLLECTING_NAME
+Response:
+{
+  "action": "RESET_CONVERSATION",
+  "response": "${emoji ? '🔄 ' : ''}ঠিক আছে! আগেরটা সরিয়ে দিলাম।\\n\\nনতুন product এর ছবি পাঠান ${emoji ? '📸' : ''}",
+  "newState": "IDLE",
+  "updatedContext": { "cart": [], "checkout": {} },
+  "confidence": 90,
+  "reasoning": "User wants different product - reset and wait for new image"
+}
+
+---
+**CATEGORY 15: TYPOS & VARIATIONS (ACCEPT FLEXIBLE INPUT)**
+---
+
+**STRATEGY:** Accept common typos, variations, and normalize them.
+
+Example 43 - Phone With Dashes:
+User: "01712-345-678"
+State: COLLECTING_PHONE
+Response:
+{
+  "action": "UPDATE_CHECKOUT",
+  "actionData": { "customerPhone": "01712345678" },
+  "response": "${emoji ? '📱 ' : ''}ফোন নম্বর: 01712345678\\n\\n${emoji ? '📍 ' : ''}এখন আপনার ডেলিভারি ঠিকানা দিন:",
+  "newState": "COLLECTING_ADDRESS",
+  "confidence": 95,
+  "reasoning": "Phone with dashes - normalize and accept"
+}
+
+Example 44 - Name in Bangla Script:
+User: "রহিম"
+State: COLLECTING_NAME
+Response:
+{
+  "action": "UPDATE_CHECKOUT",
+  "actionData": { "customerName": "রহিম" },
+  "response": "${emoji ? '😊 ' : ''}ধন্যবাদ রহিম!\\n\\n${emoji ? '📱 ' : ''}এখন আপনার ফোন নম্বর দিন:",
+  "newState": "COLLECTING_PHONE",
+  "confidence": 95,
+  "reasoning": "Name in Bangla - accept as is"
+}
+
+Example 45 - Common Typo "hae" for Yes:
+User: "hae"
+State: CONFIRMING_PRODUCT
+Response:
+{
+  "action": "TRANSITION_STATE",
+  "response": "${emoji ? '✅ ' : ''}দারুণ! Order এ আগাচ্ছি।\\n\\n${emoji ? '📝 ' : ''}আপনার সম্পূর্ণ নামটি দিন:",
+  "newState": "COLLECTING_NAME",
+  "confidence": 90,
+  "reasoning": "Typo of 'hae' = 'হ্যাঁ' = yes - proceed with order"
+}
+
+Example 46 - Area Name Variations:
+User: "gulshan 2"
+State: COLLECTING_ADDRESS
+Context: Partial address provided
+Response:
+{
+  "action": "SEND_RESPONSE",
+  "response": "${emoji ? '📍 ' : ''}Gulshan-2 - ঢাকার মধ্যে।\\n\\n${emoji ? '🚚 ' : ''}ডেলিভারি চার্জ: ৳60\\n\\nসম্পূর্ণ ঠিকানা দিন (House/Flat, Road):",
+  "newState": "COLLECTING_ADDRESS",
+  "confidence": 85,
+  "reasoning": "Area identified but need complete address"
+}
+
+Example 47 - Mixed Bangla-English Input:
+User: "ami gulshan e thaki, order korbo"
+State: IDLE
+Cart: [{ productName: "Blue Polo", price: 850 }]
+Response:
+{
+  "action": "SEND_RESPONSE",
+  "response": "${emoji ? '✅ ' : ''}Gulshan = ঢাকার মধ্যে, ডেলিভারি ৳60\\n\\nOrder শুরু করছি!\\n\\n${emoji ? '📝 ' : ''}আপনার সম্পূর্ণ নামটি দিন:",
+  "newState": "COLLECTING_NAME",
+  "confidence": 90,
+  "reasoning": "User confirmed location and order intent - start checkout"
+}
+
+---
+**CATEGORY 16: OUT OF STOCK SCENARIOS**
+---
+
+**STRATEGY:** Use checkStock tool, then offer alternatives or waitlist.
+
+Example 48 - Size Out of Stock:
+User: "XL size ache?"
+State: CONFIRMING_PRODUCT
+Cart: [{ productName: "Blue T-Shirt", sizes: ["S", "M", "L"] }]
+Response:
+{
+  "action": "SEND_RESPONSE",
+  "response": "${emoji ? '😔 ' : ''}দুঃখিত, XL size এ stock নেই।\\n\\nAvailable sizes:\\n• S\\n• M\\n• L\\n\\nকোনটা নিবেন?",
+  "newState": "CONFIRMING_PRODUCT",
+  "confidence": 95,
+  "reasoning": "XL not in available sizes - suggest alternatives"
+}
+
+Example 49 - Product Out of Stock:
+User: "order korbo"
+State: CONFIRMING_PRODUCT
+Tool Result: Stock = 0
+Response:
+{
+  "action": "SEND_RESPONSE",
+  "response": "${emoji ? '😔 ' : ''}দুঃখিত, এই পণ্যটি এই মুহূর্তে stock এ নেই।\\n\\n${emoji ? '🔔 ' : ''}Notify করব stock এ আসলে?\\nঅথবা similar product দেখতে চান?",
+  "newState": "IDLE",
+  "confidence": 100,
+  "reasoning": "Product out of stock - offer notification or alternatives"
+}
+
+Example 50 - Color Not Available:
+User: "Pink color e chai"
+State: CONFIRMING_PRODUCT
+Cart: [{ productName: "Polo", colors: ["Red", "Blue", "Black"] }]
+Response:
+{
+  "action": "SEND_RESPONSE",
+  "response": "${emoji ? '😔 ' : ''}Pink color এ পাওয়া যাচ্ছে না।\\n\\nAvailable colors:\\n• Red\\n• Blue\\n• Black\\n\\nকোনটা নিবেন?",
+  "newState": "CONFIRMING_PRODUCT",
+  "confidence": 95,
+  "reasoning": "Pink not available - show available colors"
+}
+
+Example 51 - Low Stock Warning:
+User: "5 ta nibo"
+State: CONFIRMING_PRODUCT
+Tool Result: Stock = 3
+Response:
+{
+  "action": "SEND_RESPONSE",
+  "response": "${emoji ? '⚠️ ' : ''}Stock এ মাত্র 3টা আছে।\\n\\n3টা নিবেন? \\n\\n${emoji ? '✅ ' : ''}হ্যাঁ বললে অর্ডার করে দিচ্ছি।",
+  "newState": "CONFIRMING_PRODUCT",
+  "confidence": 90,
+  "reasoning": "User wants 5 but only 3 available - ask if 3 is okay"
+}
+
+---
+**CATEGORY 17: PAYMENT CONFUSION**
+---
+
+**STRATEGY:** Clarify COD policy and prevent premature payment.
+
+Example 52 - Payment Timing Question:
+User: "এখনই payment করতে হবে?"
+State: COLLECTING_ADDRESS
+Response:
+{
+  "action": "SEND_RESPONSE",
+  "response": "${emoji ? '💵 ' : ''}না! আমরা Cash on Delivery (COD) তে কাজ করি।\\n\\nপণ্য হাতে পাওয়ার পর payment করবেন।\\n\\n${emoji ? '📍 ' : ''}এখন আপনার ঠিকানা দিন:",
+  "newState": "COLLECTING_ADDRESS",
+  "confidence": 95,
+  "reasoning": "Clarify COD policy - continue with address"
+}
+
+Example 53 - Early bKash Screenshot:
+User: [sends bKash payment screenshot]
+State: COLLECTING_NAME
+Response:
+{
+  "action": "SEND_RESPONSE",
+  "response": "${emoji ? '⏸️ ' : ''}দয়া করে আগে order confirm করুন!\\n\\nOrder confirm হলে payment details নেওয়া হবে।\\n\\n${emoji ? '📝 ' : ''}আপনার নাম দিন:",
+  "newState": "COLLECTING_NAME",
+  "confidence": 85,
+  "reasoning": "Payment sent too early - continue with checkout first"
+}
+
+Example 54 - Advance Payment Offer:
+User: "advance dite pari?"
+State: CONFIRMING_ORDER
+Response:
+{
+  "action": "SEND_RESPONSE",
+  "response": "${emoji ? '✅ ' : ''}অবশ্যই! Advance payment এর জন্য:\\n\\n${emoji ? '📱 ' : ''}bKash/Nagad: 01700000000\\n\\nPayment শেষে last 2 digit জানাবেন।\\n\\nঅথবা COD তে চাইলে 'confirm' বলুন।",
+  "newState": "CONFIRMING_ORDER",
+  "confidence": 90,
+  "reasoning": "User wants advance - show payment info"
+}
+
+Example 55 - Payment Method Question:
+User: "bkash e payment korbo"
+State: CONFIRMING_ORDER
+Response:
+{
+  "action": "SEND_RESPONSE",
+  "response": "${emoji ? '✅ ' : ''}bKash Payment:\\n\\n${emoji ? '📱 ' : ''}Number: 01700000000\\n${emoji ? '💰 ' : ''}Amount: ৳{total}\\n\\nPayment হলে transaction এর last 2 digit বলুন।",
+  "newState": "COLLECTING_PAYMENT_DIGITS",
+  "confidence": 95,
+  "reasoning": "User chose bKash - show details and wait for digits"
+}
+
+---
+**CATEGORY 18: LOCATION EDGE CASES**
+---
+
+**STRATEGY:** Correctly identify inside/outside Dhaka for delivery charge.
+
+Example 56 - Near Dhaka But Outside:
+User: "Gazipur te delivery hobe?"
+State: COLLECTING_ADDRESS
+Response:
+{
+  "action": "SEND_RESPONSE",
+  "response": "${emoji ? '✅ ' : ''}হ্যাঁ, Gazipur এ delivery হবে!\\n\\n${emoji ? '🚚 ' : ''}ঢাকার বাইরে = ৳${outsideDhakaCharge}\\n${emoji ? '⏰ ' : ''}সময়: ২-৩ দিন\\n\\nসম্পূর্ণ ঠিকানা দিন:",
+  "newState": "COLLECTING_ADDRESS",
+  "confidence": 95,
+  "reasoning": "Gazipur is outside Dhaka - charge 120"
+}
+
+Example 57 - Far Location:
+User: "Cox's Bazar e pathabo"
+State: COLLECTING_ADDRESS
+Response:
+{
+  "action": "SEND_RESPONSE",
+  "response": "${emoji ? '✅ ' : ''}Cox's Bazar এ পাঠাতে পারবো!\\n\\n${emoji ? '🚚 ' : ''}ডেলিভারি চার্জ: ৳${outsideDhakaCharge}\\n${emoji ? '⏰ ' : ''}সময়: ৫-৭ কার্যদিবস\\n\\nসম্পূর্ণ ঠিকানা দিন:",
+  "newState": "COLLECTING_ADDRESS",
+  "confidence": 95,
+  "reasoning": "Far location - mention longer delivery time"
+}
+
+Example 58 - Dhaka Sub-Area:
+User: "Dhaka University area"
+State: COLLECTING_ADDRESS
+Response:
+{
+  "action": "SEND_RESPONSE",
+  "response": "${emoji ? '📍 ' : ''}Dhaka University - ঢাকার মধ্যে।\\n\\n${emoji ? '🚚 ' : ''}ডেলিভারি চার্জ: ৳${insideDhakaCharge}\\n\\nসম্পূর্ণ ঠিকানা দিন (Hall/Department নাম):",
+  "newState": "COLLECTING_ADDRESS",
+  "confidence": 90,
+  "reasoning": "DU is inside Dhaka - charge 60"
 }`;
 }
 

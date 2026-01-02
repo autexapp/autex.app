@@ -4305,3 +4305,385 @@ Implemented product card display for text-based queries and fixed multiple criti
 - `lib/conversation/fast-lane.ts` (multiple handlers)
 - `lib/conversation/keywords.ts` (SELLER_KEYWORDS)
 - `lib/conversation/action-validator.ts` (state transitions)
+
+---
+
+## Hybrid Control Mode - Owner Manual Intervention (2025-12-09)
+
+### Overview
+Implemented a comprehensive hybrid control mode system that allows business owners to manually intervene in bot conversations while maintaining automation. When the owner replies from the dashboard, the bot pauses for 30 minutes to let them handle the conversation manually.
+
+### Problem Solved
+Previously, there was no way for owners to temporarily take over a conversation without fully disabling the bot. This led to:
+- Bot replying over owner messages
+- No coordination between automated and manual responses
+- Race conditions causing duplicate replies
+
+### Solution Architecture
+
+#### 1. Control Modes
+| Mode | Bot Behavior | Use Case |
+|------|--------------|----------|
+| `bot` | Fully automated | Default mode |
+| `manual` | Bot completely disabled | Owner handles all replies |
+| `hybrid` | Bot pauses after owner reply | Temporary takeover with auto-resume |
+
+#### 2. Protected Order States
+Bot continues during critical order collection states even if paused:
+- `COLLECTING_MULTI_VARIATIONS`
+- `COLLECTING_NAME`
+- `COLLECTING_PHONE`
+- `COLLECTING_ADDRESS`
+- `CONFIRMING_ORDER`
+- `AWAITING_CUSTOMER_DETAILS`
+- `COLLECTING_PAYMENT_DIGITS`
+
+---
+
+### Database Changes
+
+**Migration**: `migrations/20251209_add_hybrid_control_mode.sql`
+
+#### Conversations Table
+| Field | Type | Description |
+|-------|------|-------------|
+| `control_mode` | TEXT | 'bot', 'manual', or 'hybrid' (default: 'bot') |
+| `last_manual_reply_at` | TIMESTAMPTZ | When owner last replied |
+| `last_manual_reply_by` | TEXT | User ID who replied |
+| `bot_pause_until` | TIMESTAMPTZ | Optional explicit pause time |
+
+#### Messages Table
+| Field | Type | Description |
+|-------|------|-------------|
+| `sender_type` | TEXT | 'customer', 'bot', or 'owner' |
+
+#### Performance Indexes
+- `idx_conversations_control_mode`
+- `idx_conversations_manual_reply`
+- `idx_messages_sender_type`
+
+---
+
+### Backend Implementation
+
+#### 1. Webhook Handler Updates (`app/api/webhooks/facebook/route.ts`)
+- **Owner Message Detection**: Compares `sender.id` with `page_id`
+- **Hybrid Mode Check**: Skips bot if owner replied < 30 minutes ago
+- **Protected States**: Bot continues during order collection even if paused
+- **Processing Lock**: Prevents race conditions between bot/owner
+
+#### 2. Send Message API (`app/api/conversations/[id]/send-message/route.ts`)
+- **NEW**: Allows owner to send messages from dashboard
+- Validates authentication and workspace ownership
+- Sends via Facebook Graph API
+- Updates `control_mode` to 'hybrid' and tracks `last_manual_reply_at`
+- Saves message with `sender_type: 'owner'`
+
+#### 3. Control Mode API (`app/api/conversations/[id]/control-mode/route.ts`)
+- **PATCH**: Switch between Bot/Manual/Hybrid modes
+- **GET**: Fetch current control mode
+- Clears pause state when switching to bot mode
+
+#### 4. Messages Route Fix (`app/api/conversations/[id]/messages/route.ts`)
+- Fixed Next.js 15 params async issue
+- Added `sender_type: 'owner'` to owner messages
+- Updates control_mode when owner sends message
+
+#### 5. Orchestrator Updates (`lib/conversation/orchestrator.ts`)
+- Added `sender_type: 'bot'` to all bot message logging
+
+---
+
+### Processing Lock System (`lib/conversation/processing-lock.ts`)
+
+**Purpose**: Prevents race conditions where bot and owner reply simultaneously.
+
+**Features**:
+- In-memory Map storage with TTL-based expiration
+- Lock types: `bot_processing`, `owner_sending`, `general`
+- Auto-cleanup of expired locks every 5 seconds
+- Async `waitForLock()` method
+
+**Methods**:
+| Method | Description |
+|--------|-------------|
+| `acquireLock(id, type, ttl)` | Acquire lock on conversation |
+| `releaseLock(id)` | Release lock |
+| `isLocked(id)` | Check if locked, returns lock info |
+| `isLockedBy(id, type)` | Check if locked by specific type |
+| `waitForLock(id, timeout)` | Async wait for lock release |
+
+**Webhook Integration**:
+1. Before bot processing → acquire `bot_processing` lock
+2. If owner_sending lock → wait up to 3s
+3. Check for owner intervention after waiting
+4. Always release in finally block
+
+---
+
+### Frontend Implementation
+
+#### 1. Control Panel Component (`components/dashboard/conversation-control-panel.tsx`)
+- **Mode Badge**: Visual indicator with countdown timer
+  - 🤖 Bot Active (green)
+  - 👨‍💼 Manual Control (orange)
+  - 🔄 Hybrid (Xm) (blue with countdown)
+- **Mode Switcher**: Dropdown to switch modes
+- **Resume Bot Button**: Immediately resume bot in hybrid mode
+- **Help Text**: Explains current mode behavior
+
+#### 2. Conversations Page Updates (`app/dashboard/conversations/page.tsx`)
+
+**New Features**:
+- **Control Mode Badges**: Shows mode on each conversation in list
+- **Mode Filtering**: Filter by All/Bot/Manual/Hybrid
+- **Needs Attention Indicator**: Orange border + "⚠️ Needs your reply" for manual mode
+- **Message Styling by Sender Type**:
+  - Customer: Left-aligned, gray background
+  - Bot: Right-aligned, blue background with 🤖
+  - Owner: Right-aligned, green background with 👨‍💼
+  - "via Messenger" badge for owner messages from Messenger app
+
+---
+
+### Testing Results
+
+| Test Case | Result |
+|-----------|--------|
+| Send from dashboard | ✅ Switches to hybrid, shows countdown |
+| Bot skips in hybrid mode | ✅ Logs "Owner replied X mins ago - skipping bot" |
+| Control panel displays | ✅ Badge, dropdown, timer working |
+| Mode switching | ✅ API updates database correctly |
+| Message styling | ✅ Visual distinction for sender types |
+| List badges | ✅ Filtering works correctly |
+
+---
+
+### Files Created
+
+| File | Description |
+|------|-------------|
+| `migrations/20251209_add_hybrid_control_mode.sql` | Database migration |
+| `app/api/conversations/[id]/send-message/route.ts` | Send message API |
+| `app/api/conversations/[id]/control-mode/route.ts` | Control mode API |
+| `lib/conversation/processing-lock.ts` | Lock manager for race prevention |
+| `components/dashboard/conversation-control-panel.tsx` | Control panel UI |
+| `lib/conversation/__tests__/processing-lock.test.ts` | Test suite |
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `types/supabase.ts` | Added new field types |
+| `schema.sql` | Updated schema documentation |
+| `app/api/webhooks/facebook/route.ts` | Hybrid mode check, protected states, lock integration |
+| `app/api/conversations/[id]/route.ts` | Added sender_type to query |
+| `app/api/conversations/[id]/messages/route.ts` | Fixed params, added sender_type |
+| `lib/conversation/orchestrator.ts` | Added sender_type: 'bot' |
+| `app/dashboard/conversations/page.tsx` | Control panel, badges, filtering, message styling |
+
+---
+
+### Known Limitations
+
+- **Meta Business Suite / Messenger App**: Messages sent via these channels don't trigger webhook events (Facebook API limitation). Only dashboard messages are tracked for hybrid mode.
+- **In-Memory Locks**: Current lock system is in-memory (single instance). For multi-instance deployments, migrate to Redis.
+
+---
+
+### Technical Achievements
+
+✅ **3 Control Modes**: Bot, Manual, Hybrid with seamless switching
+✅ **30-Minute Auto-Pause**: After owner reply, bot automatically pauses
+✅ **Protected Order States**: Bot continues critical flows even when paused
+✅ **Race Condition Prevention**: Lock system prevents duplicate responses
+✅ **Visual Distinction**: Clear UI for different message types
+✅ **Real-time Updates**: Control panel reflects current state
+
+---
+
+## Enhanced AI Director - Examples & Validation (2025-12-09)
+
+### Overview
+Comprehensive enhancement to the AI Director with 25 new example scenarios, 3 new validators, and a context preservation system for error recovery.
+
+### New Features
+
+#### 1. Context Manager (NEW FILE)
+**File**: `lib/conversation/context-manager.ts`
+
+| Function | Purpose |
+|----------|---------|
+| `saveCheckpoint()` | Backup context before AI calls |
+| `rollback()` | Restore on errors |
+| `validateIntegrity()` | Check for context corruption |
+| `getContextManager()` | Singleton for app-wide use |
+
+**Integration**: Orchestrator now saves checkpoints before AI Director calls and rolls back on errors.
+
+#### 2. 25 New Example Scenarios (Examples #34-58)
+**File**: `lib/conversation/ai-director.ts`
+
+| Category | Examples | What It Teaches AI |
+|----------|----------|-------------------|
+| Ambiguous Questions | #34-38 | Ask clarification when vague |
+| Contradictions | #39-42 | Handle user corrections gracefully |
+| Typos & Variations | #43-47 | Accept flexible input formats |
+| Out of Stock | #48-51 | Offer alternatives, low stock warning |
+| Payment Confusion | #52-55 | Clarify COD, prevent early payment |
+| Location Edge Cases | #56-58 | Correct inside/outside Dhaka detection |
+
+#### 3. New Validators
+**File**: `lib/conversation/action-validator.ts`
+
+| Validator | Purpose |
+|-----------|---------|
+| `validateStockAvailability()` | Check stock before add to cart |
+| `validateAddressCompleteness()` | Ensure address has area/city |
+| `validatePaymentTiming()` | Prevent payment before order confirmed |
+
+### Files Created/Modified
+- `lib/conversation/context-manager.ts` [NEW] - Context checkpoint/rollback system
+- `lib/conversation/ai-director.ts` - Added ~200 lines of new examples
+- `lib/conversation/action-validator.ts` - Added 3 new validators (~160 lines)
+- `lib/conversation/orchestrator.ts` - Context manager integration
+
+### Technical Achievements
+- ✅ **Checkpoint/Rollback**: Automatic recovery from AI errors
+- ✅ **58+ Total Examples**: Comprehensive scenario coverage
+- ✅ **Smart Stock Validation**: Prevents orders when out of stock
+- ✅ **Address Validation**: Ensures delivery area is specified
+- ✅ **Payment Timing**: Blocks premature payment attempts
+
+---
+
+## Global Bot Toggle - Master Switch (2025-12-10)
+
+### Overview
+Implemented a global master switch to enable/disable the bot for an entire Facebook page. When disabled, the bot stops responding to ALL customers on that page, requiring manual replies for every message.
+
+### Problem Solved
+Previously, there was no way to completely disable the bot for a page without disconnecting it. This feature allows owners to:
+- Temporarily disable the bot during maintenance or testing
+- Take full manual control when needed
+- Quickly see bot status at a glance
+
+---
+
+### Database Changes
+
+**Migration**: `migrations/add_bot_enabled_to_pages.sql`
+
+```sql
+ALTER TABLE public.facebook_pages 
+ADD COLUMN bot_enabled BOOLEAN NOT NULL DEFAULT true;
+```
+
+---
+
+### API Implementation
+
+#### Toggle Bot API (`app/api/facebook/pages/[id]/toggle-bot/route.ts`)
+- **PATCH** endpoint to enable/disable bot
+- Validates authentication and workspace ownership
+- Returns updated page record
+
+**Request:**
+```json
+{ "bot_enabled": false }
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "page": {
+    "id": "802675242933269",
+    "name": "Code and Cortex",
+    "bot_enabled": false
+  }
+}
+```
+
+---
+
+### Webhook Integration (`app/api/webhooks/facebook/route.ts`)
+
+Added global bot check after owner message handling:
+1. Fetch `facebook_pages` with `bot_enabled` field
+2. If `bot_enabled === false`:
+   - Save customer message to database ✅
+   - Log "🛑 Bot disabled for page {id} - skipping processing"
+   - Return early (no orchestrator call) ❌
+
+---
+
+### Settings Page Toggle (`app/dashboard/settings/page.tsx`)
+
+**Facebook Tab Features:**
+- Switch component with visual state (🤖 Active / 🛑 Disabled)
+- Confirmation dialog when disabling:
+  - "Disable Bot?"
+  - "The bot will stop responding to ALL customers..."
+- Toast notifications on toggle
+- Real-time UI update
+
+**URL Tab Parameter Fix:**
+- Added `useSearchParams` to read tab from URL
+- Links like `?tab=facebook` now work correctly
+
+---
+
+### Conversations Page Warning (`app/dashboard/conversations/page.tsx`)
+
+**Banner (when bot disabled):**
+- Red/orange background warning
+- "⚠️ Bot is Disabled for All Conversations"
+- "You're in manual-only mode. The bot will not respond to any customer messages."
+- [Enable Bot] button → toggles bot back on
+
+**Chat Header Badge:**
+- Small "🛑 Bot Disabled" badge next to customer name
+
+---
+
+### Overview Page Indicator (`app/dashboard/page.tsx`)
+
+**Bot Status Card:**
+- Positioned below stats cards
+- Clickable → links to Settings → Facebook tab
+- States:
+  - 🤖 Bot: Active (green background) - "Automatically responding to customer messages"
+  - 🛑 Bot: Disabled (red background) - "Bot is disabled. You need to reply manually."
+
+---
+
+### Files Created
+
+| File | Description |
+|------|-------------|
+| `migrations/add_bot_enabled_to_pages.sql` | Database migration |
+| `app/api/facebook/pages/[id]/toggle-bot/route.ts` | Toggle API endpoint |
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `types/supabase.ts` | Added `bot_enabled: boolean` to FacebookPages |
+| `schema.sql` | Added `bot_enabled` column |
+| `app/api/facebook/pages/route.ts` | Added `bot_enabled` to select query |
+| `app/api/webhooks/facebook/route.ts` | Added global bot check |
+| `app/dashboard/settings/page.tsx` | Switch toggle, URL params fix |
+| `app/dashboard/conversations/page.tsx` | Warning banner, chat badge |
+| `app/dashboard/page.tsx` | Bot status indicator card |
+
+---
+
+### Technical Achievements
+
+✅ **Master Kill Switch**: One toggle disables bot for entire page
+✅ **Message Preservation**: Customer messages still saved when bot disabled
+✅ **Visual Indicators**: Clear status across Overview, Settings, and Conversations
+✅ **Confirmation Dialog**: Prevents accidental disable
+✅ **URL Tab Navigation**: Settings tab parameter works correctly
+
