@@ -107,6 +107,31 @@ const DEFAULT_SETTINGS: WorkspaceSettings = {
 };
 
 /**
+ * Transform fast_lane_messages from database (snake_case) to TypeScript (camelCase)
+ */
+function transformFastLaneMessages(dbMessages: any): FastLaneMessages | null {
+  if (!dbMessages) return null;
+  
+  return {
+    productConfirm: dbMessages.product_confirm || dbMessages.productConfirm,
+    productDecline: dbMessages.product_decline || dbMessages.productDecline,
+    nameCollected: dbMessages.name_collected || dbMessages.nameCollected,
+    phoneCollected: dbMessages.phone_collected || dbMessages.phoneCollected,
+    orderConfirmed: dbMessages.order_confirmed || dbMessages.orderConfirmed,
+    orderCancelled: dbMessages.order_cancelled || dbMessages.orderCancelled,
+    paymentInstructions: dbMessages.paymentInstructions || dbMessages.payment_instructions,
+    paymentReview: dbMessages.paymentReview || dbMessages.payment_review,
+    invalidPaymentDigits: dbMessages.invalidPaymentDigits || dbMessages.invalid_payment_digits,
+    deliveryInfo: dbMessages.delivery_info || dbMessages.deliveryInfo,
+    returnPolicy: dbMessages.return_policy || dbMessages.returnPolicy,
+    paymentInfo: dbMessages.payment_info || dbMessages.paymentInfo,
+    urgencyResponse: dbMessages.urgency_response || dbMessages.urgencyResponse,
+    objectionResponse: dbMessages.objection_response || dbMessages.objectionResponse,
+    sellerInfo: dbMessages.seller_info || dbMessages.sellerInfo,
+  };
+}
+
+/**
  * Loads workspace settings from database
  * Returns default settings if none exist
  */
@@ -151,7 +176,8 @@ export async function loadWorkspaceSettings(
       paymentMethods: ((settings as any).payment_methods as any) || DEFAULT_SETTINGS.paymentMethods,
       paymentMessage: (settings as any).payment_message || DEFAULT_SETTINGS.paymentMessage,
       behaviorRules: ((settings as any).behavior_rules as any) || DEFAULT_SETTINGS.behaviorRules,
-      fastLaneMessages: ((settings as any).fast_lane_messages as any) || DEFAULT_SETTINGS.fastLaneMessages,
+      // Transform fast_lane_messages from snake_case to camelCase
+      fastLaneMessages: transformFastLaneMessages((settings as any).fast_lane_messages) || DEFAULT_SETTINGS.fastLaneMessages,
       order_collection_style: (settings as any).order_collection_style || DEFAULT_SETTINGS.order_collection_style,
       quick_form_prompt: (settings as any).quick_form_prompt || DEFAULT_SETTINGS.quick_form_prompt,
       quick_form_error: (settings as any).quick_form_error || DEFAULT_SETTINGS.quick_form_error,

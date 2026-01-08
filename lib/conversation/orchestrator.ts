@@ -558,11 +558,6 @@ async function executeDecision(
       // Replace PENDING with actual order number in response
       response = response.replace('PENDING', orderNumber);
       
-      // Add payment instructions if configured
-      if (settings.paymentMessage) {
-        response += '\n\n' + settings.paymentMessage;
-      }
-      
       // Reset cart and checkout after order
       updatedContext.cart = [];
       updatedContext.checkout = {};
@@ -1260,8 +1255,8 @@ async function createOrderInDb(
 
 /**
  * Updates conversation context in database
- * NOTE: We do NOT update customer_name here to preserve the Facebook profile name.
- * The checkout customer name is stored in context.checkout.customerName instead.
+ * NOTE: In LIVE mode, Facebook profile fetch often fails due to API restrictions.
+ * So we save the customer name from order checkout flow as a fallback.
  */
 async function updateContextInDb(
   supabase: any,
@@ -1271,13 +1266,24 @@ async function updateContextInDb(
 ): Promise<void> {
   console.log('💾 Updating conversation context...');
   
+  // Build update object
+  const updateData: any = {
+    current_state: newState,
+    context: updatedContext,
+    last_message_at: new Date().toISOString(),
+  };
+  
+  // If checkout has customer name, update conversation's customer_name
+  // This is the fallback for when Facebook profile fetch fails in LIVE mode
+  const checkoutName = updatedContext.checkout?.customerName;
+  if (checkoutName && checkoutName.trim().length > 1) {
+    console.log(`👤 Updating customer_name from checkout: "${checkoutName}"`);
+    updateData.customer_name = checkoutName;
+  }
+  
   const { error } = await supabase
     .from('conversations')
-    .update({
-      current_state: newState,
-      context: updatedContext,
-      last_message_at: new Date().toISOString(),
-    })
+    .update(updateData)
     .eq('id', conversationId);
   
   if (error) {

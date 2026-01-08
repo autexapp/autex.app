@@ -4687,3 +4687,107 @@ Added global bot check after owner message handling:
 ✅ **Confirmation Dialog**: Prevents accidental disable
 ✅ **URL Tab Navigation**: Settings tab parameter works correctly
 
+---
+
+## 2026-01-03: Google OAuth, Loading Experience & Profile Name Fix
+
+### Overview
+Added Google OAuth authentication, enhanced loading experience with animated messages, and fixed the customer profile name display issue.
+
+---
+
+### 🔐 Feature 1: Google OAuth Authentication
+
+#### Files Created
+| File | Description |
+|------|-------------|
+| `app/auth/callback/route.ts` | OAuth callback handler |
+| `app/(auth)/complete-profile/page.tsx` | Profile completion for new OAuth users |
+
+#### Files Modified
+| File | Changes |
+|------|---------|
+| `app/(auth)/login/page.tsx` | Added "Continue with Google" button, Suspense wrapper |
+| `app/(auth)/signup/page.tsx` | Added "Continue with Google" button |
+| `middleware.ts` | Handle `/complete-profile` route for OAuth users |
+
+#### Flow
+1. User clicks "Continue with Google"
+2. Supabase OAuth → Google login
+3. Callback handler checks if user has `business_name` in metadata
+4. **New users**: Redirect to `/complete-profile` to collect business info
+5. **Existing users**: Redirect to `/dashboard`
+
+#### Suspense Fix
+- Added Suspense boundary to login page for `useSearchParams()`
+- Prevents Next.js 14+ build errors with static export
+
+---
+
+### ⏳ Feature 2: Loading Text Animation
+
+#### Files Created
+| File | Description |
+|------|-------------|
+| `components/ui/loading-text.tsx` | Reusable loading text component |
+
+#### Features
+- 10 rotating messages (e.g., "Almost there", "Cooking up your dashboard")
+- Dancing dots animation (`...`)
+- 3-second rotation interval
+- Centered, larger font styling
+- Hydration-safe (fixed initial state)
+
+#### Skeleton Updates
+Added `<LoadingText />` to all skeleton components:
+- `dashboard-skeleton.tsx`
+- `orders-skeleton.tsx`
+- `products-skeleton.tsx`
+- `settings-skeleton.tsx`
+- `analytics-skeleton.tsx`
+- `conversations-skeleton.tsx`
+- `ai-setup-skeleton.tsx`
+- `admin-skeleton.tsx`
+
+---
+
+### 👤 Feature 3: Customer Profile Name Fix
+
+#### Problem
+The conversation's `customer_name` was being overwritten with the order checkout name (e.g., "Zayed Bin Hamid") instead of preserving the Facebook profile name (e.g., "ahamad hassan").
+
+#### Root Cause
+1. `updateContextInDb()` in `orchestrator.ts` was updating `customer_name` with checkout name
+2. Backfill logic only triggered for `null`, "Unknown Customer", or "Facebook User"
+
+#### Solution
+
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `lib/conversation/orchestrator.ts` | Removed `customer_name` update from `updateContextInDb()` |
+| `lib/facebook/profile.ts` | Added detailed debug logging |
+| `app/api/webhooks/facebook/route.ts` | Enhanced backfill conditions with logging |
+
+**Backfill Logic Updated:**
+- Now also checks for existing "real" names that need refresh
+- Detailed console logging for debugging:
+  - `🔄 [BACKFILL CHECK]` - Shows current values
+  - `🔍 [PROFILE FETCH]` - Shows API call results
+  - `✅ [PROFILE FETCH] SUCCESS!` - Shows fetched name
+
+**Result:**
+- Facebook profile name preserved in `customer_name`
+- Order name stays in `context.checkout.customerName`
+- Existing conversations need manual fix (SET customer_name = NULL)
+
+---
+
+### Technical Achievements
+
+✅ **Google OAuth**: Complete sign-up flow with profile completion
+✅ **Loading UX**: Engaging animated messages during data load
+✅ **Profile Fix**: Facebook name preserved, order name separate
+✅ **Debug Logging**: Comprehensive logs for profile fetch troubleshooting
+✅ **Suspense Fix**: Build-compatible with Next.js 14+ static export
+

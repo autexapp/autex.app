@@ -1581,12 +1581,18 @@ function handleAwaitingCustomerDetails(
   const emoji = settings?.useEmojis ?? true;
   const text = input.trim();
   
-  let name: string | null = null;
-  let phone: string | null = null;
-  let address: string | null = null;
-  let size: string | null = null;
-  let color: string | null = null;
-  let quantity: number = 1; // Default to 1
+  // ========================================
+  // PARTIAL DATA MERGE (Ultrathink Enhancement)
+  // When user provides only missing fields, merge with previous data
+  // ========================================
+  const partial = (context.checkout as any)?.partialForm || {};
+  
+  let name: string | null = partial.name || null;
+  let phone: string | null = partial.phone || null;
+  let address: string | null = partial.address || null;
+  let size: string | null = partial.size || null;
+  let color: string | null = partial.color || null;
+  let quantity: number = partial.quantity || 1;
   
   // Check if multi-product order (sizes already collected in COLLECTING_MULTI_VARIATIONS)
   const isMultiProduct = context.cart && context.cart.length > 1;
@@ -1601,6 +1607,34 @@ function handleAwaitingCustomerDetails(
   const requiresSize = !isMultiProduct && availableSizes.length > 0;
   const requiresColor = !isMultiProduct && availableColors.length > 1;
   
+  // ========================================
+  // EARLY DETECTION: Single Size/Color Input
+  // If partial data exists and input is just a size or color, detect it early
+  // ========================================
+  const hasPartialData = partial.name || partial.phone || partial.address;
+  const textUpper = text.toUpperCase().trim();
+  const textLower = text.toLowerCase().trim();
+  
+  if (hasPartialData && text.split('\n').length === 1) {
+    // Check if input matches an available size
+    const matchedSize = availableSizes.find((s: string) => 
+      s.toUpperCase() === textUpper
+    );
+    if (matchedSize && !size) {
+      console.log(`[QUICK_FORM] Early detection: "${text}" matched as SIZE`);
+      size = matchedSize.toUpperCase();
+    }
+    
+    // Check if input matches an available color
+    const matchedColor = availableColors.find((c: string) => 
+      c.toLowerCase() === textLower
+    );
+    if (matchedColor && !color) {
+      console.log(`[QUICK_FORM] Early detection: "${text}" matched as COLOR`);
+      color = matchedColor;
+    }
+  }
+  
   // STRATEGY 1: Try labeled format (নাম:, Name:, সাইজ:, Size:, পরিমাণ:, Quantity:, etc.)
   const nameMatch = text.match(/(?:নাম|Name)\s*[:\-]\s*([^\n]+)/i);
   const phoneMatch = text.match(/(?:ফোন|Phone|Mobile|মোবাইল)\s*[:\-]\s*([^\n]+)/i);
@@ -1609,18 +1643,47 @@ function handleAwaitingCustomerDetails(
   const colorMatch = text.match(/(?:কালার|Color|Kalar|রং)\s*[:\-]\s*([^\n]+)/i);
   const quantityMatch = text.match(/(?:পরিমাণ|Quantity|Qty|সংখ্যা)\s*[:\-]\s*(\d+)/i);
   
-  if (nameMatch) name = nameMatch[1].trim();
-  if (phoneMatch) phone = phoneMatch[1].trim();
-  if (addressMatch) address = addressMatch[1].trim();
-  if (sizeMatch) size = sizeMatch[1].trim().toUpperCase();
-  if (colorMatch) color = colorMatch[1].trim();
+  if (nameMatch && !name) name = nameMatch[1].trim();
+  if (phoneMatch && !phone) phone = phoneMatch[1].trim();
+  if (addressMatch && !address) address = addressMatch[1].trim();
+  if (sizeMatch && !size) size = sizeMatch[1].trim().toUpperCase();
+  if (colorMatch && !color) color = colorMatch[1].trim();
   if (quantityMatch) quantity = parseInt(quantityMatch[1]) || 1;
   
   // STRATEGY 2: If labeled parsing failed, try positional parsing
-  if (!name || !phone || !address) {
+  // Skip if partial data already has name, phone, address - only need to fill in missing
+  const needsPositionalParsing = (!name || !phone || !address) && !hasPartialData;
+  
+  if (needsPositionalParsing) {
     const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
     
-    if (lines.length >= 3) {
+    // FIRST: Extract size/color from lines before positional parsing
+    // This prevents single-letter sizes like 'M' from being treated as names
+    const linesToRemove: number[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const lineUpper = line.toUpperCase();
+      const lineLower = line.toLowerCase();
+      
+      // Check if line matches available size
+      if (!size && availableSizes.find((s: string) => s.toUpperCase() === lineUpper)) {
+        size = lineUpper;
+        linesToRemove.push(i);
+        continue;
+      }
+      
+      // Check if line matches available color
+      if (!color && availableColors.find((c: string) => c.toLowerCase() === lineLower)) {
+        color = capitalizeWords(line);
+        linesToRemove.push(i);
+        continue;
+      }
+    }
+    
+    // Remove detected size/color lines
+    const filteredLines = lines.filter((_, idx) => !linesToRemove.includes(idx));
+    
+    if (filteredLines.length >= 3) {
       // Identify phone by pattern (most reliable)
       const phoneIndex = lines.findIndex(line => 
         /01[3-9]\d{8}|^\+?880/.test(line.replace(/\D/g, ''))
@@ -1828,42 +1891,107 @@ function handleAwaitingCustomerDetails(
   console.log(`Parsed - Name: ${name || 'null'}, Phone: ${phone || 'null'} (valid: ${isPhoneValid}), Address: ${address || 'null'}`);
   console.log(`Parsed - Size: ${size || 'null'} (valid: ${isSizeValid}), Color: ${color || 'null'} (valid: ${isColorValid})`);
   
-  // Build specific error message based on what's missing
-  let missingFields = [];
+  // ========================================
+  // SMART VALIDATION RESPONSE (Ultrathink Enhancement)
+  // Show ✅ for valid fields, ❌ for missing/invalid
+  // Store partial data for next attempt
+  // ========================================
+  
+  // Build smart response
+  let smartMsg = '';
+  
+  // Show valid fields with ✅
+  if (name) smartMsg += `✅ নাম: ${name}\n`;
+  if (isPhoneValid) smartMsg += `✅ ফোন: ${phone}\n`;
+  if (address) smartMsg += `✅ ঠিকানা: ${address}\n`;
+  if (isSizeValid && size) smartMsg += `✅ সাইজ: ${size}\n`;
+  if (isColorValid && color) smartMsg += `✅ কালার: ${color}\n`;
+  
+  // Track missing and invalid fields
+  const missingFields: string[] = [];
+  const invalidFields: { field: string; value: string; options: string[] }[] = [];
+  
+  // Check each field
   if (!name) missingFields.push('নাম');
-  if (!isPhoneValid) missingFields.push('সঠিক ফোন নম্বর');
+  
+  if (!phone || !isPhoneValid) {
+    if (phone && !isPhoneValid) {
+      // Invalid phone format
+      smartMsg += `❌ ফোন: "${phone}" সঠিক নয়!\n`;
+      missingFields.push('সঠিক ফোন (01XXXXXXXXX)');
+    } else {
+      missingFields.push('ফোন');
+    }
+  }
+  
   if (!address) missingFields.push('ঠিকানা');
-  if (requiresSize && !isSizeValid) missingFields.push(`সাইজ (${availableSizes.join('/')})`);
-  if (requiresColor && !isColorValid) missingFields.push(`কালার (${availableColors.join('/')})`);
   
-  let errorMsg = settings?.quick_form_error || 
-    `দুঃখিত, আমি আপনার তথ্যটি সঠিকভাবে বুঝতে পারিনি। ${emoji ? '😔' : ''}`;
-  
-  // Add specific missing fields
-  if (missingFields.length > 0) {
-    errorMsg += `\n\n❌ Missing: ${missingFields.join(', ')}`;
+  if (requiresSize && !isSizeValid) {
+    if (size) {
+      // Invalid size
+      smartMsg += `❌ "${size}" সাইজ নেই!\n`;
+      invalidFields.push({ field: 'সাইজ', value: size, options: availableSizes });
+    } else {
+      missingFields.push('সাইজ');
+    }
   }
   
-  // Build format example
-  let formatExample = `\n\nঅনুগ্রহ করে নিচের ফর্ম্যাটে আবার দিন:\n\nনাম: আপনার নাম\nফোন: 017XXXXXXXX\nঠিকানা: আপনার সম্পূর্ণ ঠিকানা`;
-  
-  if (requiresSize) {
-    formatExample += `\nসাইজ: ${availableSizes.join('/')}`;
+  if (requiresColor && !isColorValid) {
+    if (color) {
+      // Invalid color
+      smartMsg += `❌ "${color}" কালার নেই!\n`;
+      invalidFields.push({ field: 'কালার', value: color, options: availableColors });
+    } else {
+      missingFields.push('কালার');
+    }
   }
-  if (requiresColor) {
-    formatExample += `\nকালার: ${availableColors.join('/')}`;
+  
+  // Show missing fields
+  for (const field of missingFields) {
+    smartMsg += `❌ ${field}: দেওয়া হয়নি\n`;
   }
   
-  errorMsg += formatExample;
+  // Add helpful prompt for what to provide
+  smartMsg += '\n';
+  
+  // Build list of what's needed
+  const needed: string[] = [];
+  if (!name) needed.push('নাম');
+  if (!phone || !isPhoneValid) needed.push('ফোন');
+  if (!address) needed.push('ঠিকানা');
+  if (requiresSize && !isSizeValid) needed.push(`সাইজ (${availableSizes.join('/')})`);
+  if (requiresColor && !isColorValid) needed.push(`কালার (${availableColors.join('/')})`);
+  
+  if (needed.length === 1) {
+    smartMsg += `শুধু ${needed[0]} দিন।`;
+  } else {
+    smartMsg += `এই তথ্যগুলো দিন: ${needed.join(', ')}`;
+  }
+  
+  // Store partial data for next attempt
+  const partialForm = {
+    name: name || partial.name || null,
+    phone: isPhoneValid ? phone : (partial.phone || null),
+    address: address || partial.address || null,
+    size: isSizeValid ? size : (partial.size || null),
+    color: isColorValid ? color : (partial.color || null),
+    quantity: quantity || 1,
+  };
+  
+  console.log(`[QUICK_FORM] Storing partial data for retry:`, partialForm);
   
   return {
     matched: true,
     action: 'CONFIRM',
-    response: emoji ? errorMsg : errorMsg.replace(/😔|❌/g, ''),
+    response: emoji ? smartMsg : smartMsg.replace(/[✅❌😔]/g, ''),
     newState: 'AWAITING_CUSTOMER_DETAILS',
     updatedContext: {
       ...context,
       state: 'AWAITING_CUSTOMER_DETAILS',
+      checkout: {
+        ...context.checkout,
+        partialForm,
+      },
     },
   };
 }

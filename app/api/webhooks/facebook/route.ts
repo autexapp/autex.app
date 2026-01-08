@@ -548,7 +548,7 @@ async function processMessagingEvent(
           workspace_id: fbPage.workspace_id,
           fb_page_id: fbPage.id,
           customer_psid: customerPsid,
-          customer_name: profile?.name || 'Unknown Customer',
+          customer_name: profile?.name || 'Customer',
           customer_profile_pic_url: profile?.profile_pic,
           current_state: 'IDLE',
           control_mode: 'bot', // Default to bot control

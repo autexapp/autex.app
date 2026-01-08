@@ -4,13 +4,16 @@ import { useState, useEffect } from "react"
 import { TopBar } from "@/components/dashboard/top-bar"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { StatsCard } from "@/components/dashboard/stats-card"
+import { Input } from "@/components/ui/input"
 import {
   DollarSign,
   Activity,
   Zap,
   Loader2,
   PieChart as PieChartIcon,
-  TrendingUp
+  TrendingUp,
+  Users,
+  Search
 } from "lucide-react"
 import { 
   AreaChart, 
@@ -45,18 +48,62 @@ interface UsageData {
   }>
 }
 
+interface UserData {
+  id: string
+  email: string
+  business_name: string
+  phone: string
+  workspace_name: string
+  created_at: string
+  last_sign_in: string | null
+}
+
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 const USD_TO_BDT = 120; // Approximate exchange rate
 
+// Admin email - only this user can access the admin page
+const ADMIN_EMAIL = 'admin@gmail.com';
+
 import { AdminSkeleton } from "@/components/skeletons/admin-skeleton"
+import { useRouter } from "next/navigation"
 
 export default function AdminDashboardPage() {
+  const router = useRouter()
   const [data, setData] = useState<UsageData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [users, setUsers] = useState<UserData[]>([])
+  const [usersLoading, setUsersLoading] = useState(true)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null)
 
   useEffect(() => {
-    fetchUsageData()
+    checkAdminAccess()
   }, [])
+
+  useEffect(() => {
+    if (isAdmin === true) {
+      fetchUsageData()
+      fetchUsers()
+    }
+  }, [isAdmin])
+
+  const checkAdminAccess = async () => {
+    try {
+      const response = await fetch('/api/auth/me')
+      if (!response.ok) {
+        router.push('/dashboard')
+        return
+      }
+      const data = await response.json()
+      if (data.user?.email !== ADMIN_EMAIL) {
+        router.push('/dashboard')
+        return
+      }
+      setIsAdmin(true)
+    } catch {
+      router.push('/dashboard')
+    }
+  }
 
   const fetchUsageData = async () => {
     try {
@@ -88,7 +135,36 @@ export default function AdminDashboardPage() {
     }
   }
 
-  if (loading) {
+  const fetchUsers = async () => {
+    try {
+      setUsersLoading(true)
+      const response = await fetch("/api/admin/users")
+      if (!response.ok) throw new Error("Failed to fetch users")
+      
+      const usersData = await response.json()
+      setUsers(usersData.users || [])
+    } catch (error) {
+      console.error("Error fetching users:", error)
+    } finally {
+      setUsersLoading(false)
+    }
+  }
+
+  const filteredUsers = users.filter(user => 
+    user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    user.business_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    user.phone.includes(searchQuery)
+  )
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    })
+  }
+
+  if (isAdmin === null || loading) {
     return <AdminSkeleton />
   }
 
@@ -257,6 +333,87 @@ export default function AdminDashboardPage() {
             No usage data available
           </div>
         )}
+
+        {/* Registered Users Section */}
+        <div className="mt-8 space-y-6">
+          <div className="flex flex-col gap-2">
+            <h2 className="text-2xl font-semibold">Registered Users</h2>
+            <p className="text-muted-foreground">All users signed up on the platform.</p>
+          </div>
+
+          {/* User Stats Card */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <StatsCard
+              title="Total Users"
+              value={users.length.toString()}
+              trend={{ value: "", direction: "up", isPositive: true }}
+              comparison="registered users"
+              icon={Users}
+            />
+          </div>
+
+          {/* Users Table */}
+          <Card className="bg-card border border-border shadow-sm">
+            <CardHeader>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                  <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                    <Users className="h-5 w-5 text-primary" />
+                    User List
+                  </CardTitle>
+                  <CardDescription>View all registered users and their details</CardDescription>
+                </div>
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by email, name, phone..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {usersLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : filteredUsers.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  {searchQuery ? "No users found matching your search" : "No users registered yet"}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Email</th>
+                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Business Name</th>
+                        <th className="text-left py-3 px-2 font-medium text-muted-foreground hidden sm:table-cell">Phone</th>
+                        <th className="text-left py-3 px-2 font-medium text-muted-foreground hidden md:table-cell">Workspace</th>
+                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Signup Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredUsers.map((user) => (
+                        <tr key={user.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                          <td className="py-3 px-2">
+                            <span className="font-medium">{user.email}</span>
+                          </td>
+                          <td className="py-3 px-2 text-muted-foreground">{user.business_name}</td>
+                          <td className="py-3 px-2 text-muted-foreground hidden sm:table-cell">{user.phone}</td>
+                          <td className="py-3 px-2 text-muted-foreground hidden md:table-cell">{user.workspace_name}</td>
+                          <td className="py-3 px-2 text-muted-foreground">{formatDate(user.created_at)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </>
   )
