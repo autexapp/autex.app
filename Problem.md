@@ -1,11 +1,6 @@
+
+
 1.
-Whenever a customer wants to order a specific product that doesn't have the stock, like for example we have 10 products  with m-size but the customer is 20 pics. So it tells that we have only 10 pieces You order highest pieces 
-
-Then if the customer replied something like that, "Okay, then order 10," or "Order 5," or "Order at least one," the AI again asks the full customer details like name, phone number, and this type of things.
-
-So we need to fix this issue. Rather the AI should work some things like that It saves the information the name phone number address and everything Just it needs to update like whenever someone wants to order specific pieces of product that don't exist in a stock then it should save all the details except the amount of product then it asked order within this range like for example if 10 is stuck then one to and after it then it should update and go with next.
-
-2.
  Meta Graph API Rate Limiting & Multi-tenant Quota Management
 Status: Awaiting Implementation
 Priority: High (Scaling Risk)

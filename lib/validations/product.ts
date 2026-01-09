@@ -6,6 +6,13 @@ const sizeStockItemSchema = z.object({
   quantity: z.number().int().min(0),
 });
 
+// Variant stock item schema
+const variantStockItemSchema = z.object({
+  size: z.string().min(1),
+  color: z.string().min(1),
+  quantity: z.number().int().min(0),
+});
+
 /**
  * Schema for creating a new product
  */
@@ -18,7 +25,8 @@ export const createProductSchema = z.object({
   variations: z.record(z.any()).optional(), // JSON object for variations
   colors: z.array(z.string()).optional(),
   sizes: z.array(z.string()).optional(),
-  size_stock: z.array(sizeStockItemSchema).optional(), // NEW: per-size stock tracking
+  size_stock: z.array(sizeStockItemSchema).optional(),
+  variant_stock: z.array(variantStockItemSchema).optional(), // NEW: variant stock tracking
 });
 
 /**
@@ -52,6 +60,16 @@ export function validateProductFormData(formData: FormData): CreateProductInput 
     }
   }
 
+  // Parse variant_stock JSON if present
+  let variantStock;
+  if (formData.get('variant_stock')) {
+    try {
+      variantStock = JSON.parse(formData.get('variant_stock') as string);
+    } catch (e) {
+      console.error('Failed to parse variant_stock:', e);
+    }
+  }
+
   const data = {
     name: formData.get('name') as string,
     price: parseFloat(formData.get('price') as string),
@@ -70,6 +88,7 @@ export function validateProductFormData(formData: FormData): CreateProductInput 
       ? (formData.get('sizes') as string).split(',').map(s => s.trim()).filter(Boolean)
       : undefined,
     size_stock: sizeStock,
+    variant_stock: variantStock,
   };
 
   return createProductSchema.parse(data);
@@ -104,6 +123,13 @@ export function validateProductUpdateFormData(formData: FormData): UpdateProduct
       data.size_stock = JSON.parse(formData.get('size_stock') as string);
     } catch (e) {
       console.error('Failed to parse size_stock:', e);
+    }
+  }
+  if (formData.has('variant_stock')) {
+    try {
+      data.variant_stock = JSON.parse(formData.get('variant_stock') as string);
+    } catch (e) {
+      console.error('Failed to parse variant_stock:', e);
     }
   }
 

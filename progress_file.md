@@ -4783,11 +4783,246 @@ The conversation's `customer_name` was being overwritten with the order checkout
 
 ---
 
-### Technical Achievements
-
 ✅ **Google OAuth**: Complete sign-up flow with profile completion
 ✅ **Loading UX**: Engaging animated messages during data load
 ✅ **Profile Fix**: Facebook name preserved, order name separate
 ✅ **Debug Logging**: Comprehensive logs for profile fetch troubleshooting
 ✅ **Suspense Fix**: Build-compatible with Next.js 14+ static export
+
+---
+
+## Session: 2026-01-09 - Smart Form Validation & Live Mode Fixes
+
+### Overview
+Implemented Smart Form Validation with partial data retention and fixed several live mode issues including customer name display and dynamic message loading.
+
+---
+
+### 🧠 Feature 1: Smart Form Validation (Ultrathink Design)
+
+#### Problem
+Quick Form validation showed generic error asking for ALL fields again, even when some fields were correctly parsed.
+
+#### Solution
+Enhanced `handleAwaitingCustomerDetails()` in `lib/conversation/fast-lane.ts`:
+
+1. **Partial Data Retention**
+   - Store parsed fields in `context.checkout.partialForm`
+   - Merge with new input on retry
+   - User only needs to provide missing fields
+
+2. **Smart Response Generation**
+   - Show ✅ for valid fields
+   - Show ❌ for missing/invalid fields
+   - Show available options for invalid size/color
+
+3. **Early Size/Color Detection**
+   - When partial data exists, single-line input checked against available sizes/colors
+   - Prevents "M" being parsed as name
+
+#### Examples
+**Before:**
+```
+❌ Missing: নাম, ফোন, ঠিকানা, সাইজ
+অনুগ্রহ করে নিচের ফর্ম্যাটে আবার দিন...
+```
+
+**After:**
+```
+✅ নাম: Abdul Hamid
+✅ ফোন: 01915969330
+✅ ঠিকানা: mirpur dhaka
+✅ কালার: Red
+❌ সাইজ: দেওয়া হয়নি
+
+শুধু সাইজ (S/M/L/XL) দিন।
+```
+
+#### Files Modified
+| File | Changes |
+|------|---------|
+| `lib/conversation/fast-lane.ts` | Added partial data merge, smart response, early detection |
+
+---
+
+### 🔧 Feature 2: Field Name Mapping Fix
+
+#### Problem
+AI Setup page saves `fast_lane_messages` with snake_case field names (e.g., `payment_info`), but TypeScript expects camelCase (e.g., `paymentInfo`). Result: custom messages not loading.
+
+#### Solution
+Added `transformFastLaneMessages()` function in `lib/workspace/settings.ts`:
+- Converts `payment_info` → `paymentInfo`
+- Converts `delivery_info` → `deliveryInfo`
+- Handles all 15 message fields
+
+#### Files Modified
+| File | Changes |
+|------|---------|
+| `lib/workspace/settings.ts` | Added transform function, updated loadWorkspaceSettings |
+
+---
+
+### 👤 Feature 3: Customer Name Fallback for Live Mode
+
+#### Problem
+Facebook Graph API returns error in Live Mode when fetching user profile (code: 100, error_subcode: 33).
+
+#### Solution
+1. Changed default customer name from "Unknown Customer" to "Customer"
+2. Re-enabled saving customer name from order checkout flow
+
+#### Files Modified
+| File | Changes |
+|------|---------|
+| `app/api/webhooks/facebook/route.ts` | Default name = "Customer" |
+| `lib/conversation/orchestrator.ts` | Save checkout.customerName to conversations |
+
+---
+
+### 🧹 Feature 4: Remove Duplicate Payment Message
+
+#### Problem
+Payment review message had extra text appended from `settings.paymentMessage`.
+
+#### Solution
+Removed the append logic in `orchestrator.ts` - `paymentReview` is already complete.
+
+#### Files Modified
+| File | Changes |
+|------|---------|
+| `lib/conversation/orchestrator.ts` | Removed paymentMessage append |
+
+---
+
+### 📜 Feature 5: GEMINI.md Constitution
+
+Created `/GEMINI.md` - a development philosophy guide:
+- **Think Different**: Question assumptions
+- **Obsess Over Details**: Understand the codebase
+- **Plan Like Da Vinci**: Sketch before coding
+- **Craft, Don't Code**: Elegant function names
+- **Iterate Relentlessly**: Refine until great
+- **Simplify Ruthlessly**: Remove complexity
+
+---
+
+### Technical Achievements
+
+✅ **Smart Validation**: Shows ✅/❌ for each field, retains partial data
+✅ **Single Input Detection**: "M" correctly parsed as size when partial data exists
+✅ **Field Name Mapping**: snake_case → camelCase transformation
+✅ **Live Mode Ready**: Customer name fallback, error handling
+✅ **Clean Responses**: No duplicate message appending
+
+---
+
+## Session: 2026-01-09 (Part 2) - Quantity Validation & Stock Filter
+
+### 🔧 Feature 1: Quantity Adjustment Data Retention
+
+#### Problem (from Problem.md)
+When customer provides quantity > available stock, the bot asked for ALL details again instead of just correcting the quantity.
+
+**Before:**
+```
+Customer: Name, Phone, Address, Size=M, Qty=20
+Bot: "মাত্র 5 পিস আছে"
+Customer: "5 দাও"
+Bot: "আপনার নামটি বলবেন?" ← DATA LOST!
+```
+
+#### Solution
+1. **Save valid fields before stock error** - Store name, phone, address, size, color in `partialForm`
+2. **Add `awaitingField` flag** - Tracks whether waiting for 'size' or 'quantity'
+3. **Early detection** - When `awaitingField === 'quantity'` and input is number, merge and proceed
+
+**After:**
+```
+Customer: Name, Phone, Address, Size=M, Qty=20
+Bot: "M সাইজে মাত্র 5 পিস আছে। কত পিস নেবেন? (1-5)"
+Customer: "5"
+Bot: "✅ 5 পিস নিয়েছি! 📦 Order Summary..."
+```
+
+#### Two Scenarios Handled
+| Scenario | Stock | Action |
+|----------|-------|--------|
+| Size out of stock | `stockAvailable = 0` | Save data, await SIZE input |
+| Quantity too high | `stockAvailable > 0` | Save data, await QUANTITY input |
+
+#### Files Modified
+| File | Changes |
+|------|---------|
+| `lib/conversation/fast-lane.ts` | Added awaitingField detection, stock error partialForm save |
+
+---
+
+### 🔧 Feature 2: In-Stock Size Filter
+
+#### Problem
+Quick form prompt showed ALL sizes including ones with 0 stock (e.g., L with stock=0).
+
+```
+সাইজ: (S/M/L/XL)  ← L shown but has 0 stock
+```
+
+#### Solution
+Filter `size_stock` array to only show sizes where `quantity > 0`.
+
+```
+সাইজ: (S/M/XL)  ← L filtered out
+```
+
+#### Locations Fixed (4 places)
+1. **Initial quick form prompt** (fast-lane.ts) - When customer types "yes/hi"
+2. **Order Now button** (route.ts) - When customer clicks button
+3. **Stock error message** - "আছে: S/M/XL"
+4. **Size adjustment error** - Retry with wrong size
+
+#### Filter Logic
+```typescript
+const inStockSizes = allSizes.filter((sz: string) => {
+  if (sizeStock.length === 0) return true; // No stock tracking
+  const stockEntry = sizeStock.find((ss: any) => 
+    ss.size?.toUpperCase() === sz.toUpperCase()
+  );
+  return !stockEntry || stockEntry.quantity > 0;
+});
+```
+
+#### Files Modified
+| File | Changes |
+|------|---------|
+| `lib/conversation/fast-lane.ts` | Added `inStockSizes` filter, updated error messages |
+| `app/api/webhooks/facebook/route.ts` | Added filter to Order Now postback handler |
+
+---
+
+### 🔧 Feature 3: Address Parsing Fix
+
+#### Problem
+When parsing multi-line customer details, size (M) and color (red) were being appended to the address.
+
+**Before:** Address = "Mirpur Dhaka\nM\nred"
+**After:** Address = "Mirpur Dhaka"
+
+#### Root Cause
+Positional parsing used original `lines` array instead of `filteredLines` (where size/color already removed).
+
+#### Files Modified
+| File | Changes |
+|------|---------|
+| `lib/conversation/fast-lane.ts` | Changed `lines` to `filteredLines` in positional parsing |
+
+---
+
+### Technical Achievements
+
+✅ **Partial Data Retention**: Customer data saved during stock errors
+✅ **Smart Quantity Adjustment**: Just asks for corrected quantity, not all fields
+✅ **Smart Size Adjustment**: Just asks for new size when selected size has 0 stock
+✅ **In-Stock Filter**: Only shows available sizes in prompts and error messages
+✅ **Address Parsing**: Size/color correctly excluded from address
+✅ **Bengali Numeral Support**: Quantity parsing supports ০-৯ numerals
 

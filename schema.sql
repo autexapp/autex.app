@@ -142,6 +142,7 @@ CREATE TABLE public.products (
   colors ARRAY DEFAULT '{}'::text[],
   sizes ARRAY DEFAULT '{}'::text[],
   size_stock jsonb DEFAULT '[]'::jsonb,
+  variant_stock jsonb DEFAULT '[]'::jsonb,
   requires_size_selection boolean DEFAULT true,
   CONSTRAINT products_pkey PRIMARY KEY (id),
   CONSTRAINT products_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id)

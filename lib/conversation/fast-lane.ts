@@ -165,6 +165,7 @@ const GREETING_PATTERNS = [
  * @param input - User's text input
  * @param currentState - Current conversation state
  * @param currentContext - Current conversation context
+ * @param settings - Workspace settings
  * @returns FastLaneResult indicating match status and action
  */
 export function tryFastLane(
@@ -480,19 +481,29 @@ function handleConfirmingProduct(
       }
       
       // Single product: Check for size/color requirements
-      const availableSizes = productAny?.sizes || productAny?.availableSizes || [];
+      const allSizes = productAny?.sizes || productAny?.availableSizes || [];
       const availableColors = productAny?.colors || productAny?.availableColors || [];
+      
+      // Filter sizes to only show in-stock ones
+      const sizeStock = productAny?.size_stock || [];
+      const availableSizes = allSizes.filter((size: string) => {
+        if (sizeStock.length === 0) return true; // No stock tracking, show all
+        const stockEntry = sizeStock.find((ss: any) => ss.size?.toUpperCase() === size.toUpperCase());
+        return !stockEntry || stockEntry.quantity > 0; // Show if no entry (assume in stock) or has stock
+      });
+      
       const hasSize = availableSizes.length > 0;
       const hasColor = availableColors.length > 1; // Only ask if multiple colors
       
-      console.log(`🔍 [QUICK_FORM] Product sizes: ${availableSizes.join(', ') || 'none'}`);
+      console.log(`🔍 [QUICK_FORM] Product sizes: ${allSizes.join(', ') || 'none'}`);
+      console.log(`🔍 [QUICK_FORM] In-stock sizes: ${availableSizes.join(', ') || 'none'}`);
       console.log(`🔍 [QUICK_FORM] Product colors: ${availableColors.join(', ') || 'none'}`);
       
       // Build dynamic prompt based on product variations
       let dynamicPrompt = settings.quick_form_prompt || 
         'দারুণ! অর্ডারটি সম্পন্ন করতে, অনুগ্রহ করে নিচের ফর্ম্যাট অনুযায়ী আপনার তথ্য দিন:\n\nনাম:\nফোন:\nসম্পূর্ণ ঠিকানা:';
       
-      // Append size field if product has sizes
+      // Append size field if product has in-stock sizes
       if (hasSize) {
         dynamicPrompt += `\nসাইজ: (${availableSizes.join('/')})`;
       }
@@ -833,6 +844,7 @@ function handleCollectingAddress(
       response: orderSummary,
       newState: 'CONFIRMING_ORDER',
       updatedContext: {
+        ...context,
         state: 'CONFIRMING_ORDER',
         checkout: {
           ...context.checkout,
@@ -1585,7 +1597,7 @@ function handleAwaitingCustomerDetails(
   // PARTIAL DATA MERGE (Ultrathink Enhancement)
   // When user provides only missing fields, merge with previous data
   // ========================================
-  const partial = (context.checkout as any)?.partialForm || {};
+  const partial = context.checkout?.partialForm || {};
   
   let name: string | null = partial.name || null;
   let phone: string | null = partial.phone || null;
@@ -1603,9 +1615,183 @@ function handleAwaitingCustomerDetails(
   const availableSizes = productAny?.sizes || productAny?.availableSizes || [];
   const availableColors = productAny?.colors || productAny?.availableColors || [];
   
+  // Filter to only in-stock sizes for error messages
+  const sizeStockData = productAny?.size_stock || [];
+  const stockVariantData = productAny?.variant_stock || [];
+  
+  const inStockSizes = availableSizes.filter((sz: string) => {
+    // If color is selected and we have variant stock, check specific Size×Color combo
+    if (color && stockVariantData.length > 0) {
+       const variant = stockVariantData.find((v: any) => 
+         v.size?.toUpperCase() === sz.toUpperCase() && 
+         v.color?.toLowerCase() === color?.toLowerCase()
+       );
+       // If variant exists, check quantity (if not exists, maybe new variant, assume available)
+       if (variant) return variant.quantity > 0;
+    }
+    
+    // Fallback to size_stock
+    if (sizeStockData.length === 0) return true;
+    const stockEntry = sizeStockData.find((ss: any) => ss.size?.toUpperCase() === sz.toUpperCase());
+    return !stockEntry || stockEntry.quantity > 0;
+  });
+  
   // For multi-product: sizes/colors already collected, no need to require them
   const requiresSize = !isMultiProduct && availableSizes.length > 0;
   const requiresColor = !isMultiProduct && availableColors.length > 1;
+  // ========================================
+  // EARLY DETECTION: awaitingField (Quantity/Size Adjustment)
+  // If partialForm has awaitingField, check for that input first
+  // ========================================
+  const awaitingField = partial.awaitingField as 'size' | 'quantity' | null;
+  const maxQuantity = partial.maxQuantity || 999;
+  
+  if (awaitingField && text.split('\n').length === 1) {
+    // QUANTITY ADJUSTMENT: User is providing corrected quantity
+    if (awaitingField === 'quantity') {
+      // Parse quantity from input (supports Bengali and Arabic numerals)
+      const convertedNum = text.replace(/[০-৯]/g, (d) => String('০১২৩৪৫৬৭৮৯'.indexOf(d)));
+      const parsedQty = parseInt(convertedNum.replace(/\D/g, ''));
+      
+      if (parsedQty && parsedQty >= 1 && parsedQty <= maxQuantity) {
+        console.log(`[QUICK_FORM] Quantity adjustment: ${parsedQty} (max: ${maxQuantity})`);
+        
+        // Use stored partial data + new quantity
+        const name = partial.name;
+        const phone = partial.phone;
+        const address = partial.address;
+        const size = partial.size;
+        const color = partial.color;
+        const quantity = parsedQty;
+        
+        // Calculate delivery and generate summary
+        const deliveryCharge = address.toLowerCase().includes('dhaka') || address.toLowerCase().includes('ঢাকা')
+          ? (settings?.deliveryCharges?.insideDhaka || 60)
+          : (settings?.deliveryCharges?.outsideDhaka || 120);
+        
+        const updatedCart = context.cart.map((item, idx) => {
+          if (idx === 0) {
+            return {
+              ...item,
+              quantity,
+              variations: {
+                ...(item as any).variations,
+                size: size || undefined,
+                color: color || undefined,
+              },
+            };
+          }
+          return item;
+        });
+        
+        const cartTotal = updatedCart.reduce((sum, item) => sum + ((item as any).price || 0) * (item.quantity || 1), 0);
+        const totalAmount = cartTotal + deliveryCharge;
+        
+        const orderSummary = generateOrderSummary(name, updatedCart, address, deliveryCharge, totalAmount, phone);
+        
+        return {
+          matched: true,
+          action: 'CONFIRM',
+          response: emoji ? `✅ ${quantity} পিস নিয়েছি!\n\n${orderSummary}` : `${quantity} পিস নিয়েছি!\n\n${orderSummary}`,
+          newState: 'CONFIRMING_ORDER',
+          updatedContext: {
+            ...context,
+            state: 'CONFIRMING_ORDER',
+            cart: updatedCart,
+            checkout: {
+              ...context.checkout,
+              customerName: name,
+              customerPhone: phone,
+              customerAddress: address,
+              deliveryCharge,
+              totalAmount,
+              partialForm: undefined, // Clear partial form
+            },
+            selectedSize: size,
+            selectedColor: color,
+          },
+        };
+      } else {
+        // Invalid quantity
+        const errorMsg = parsedQty && parsedQty > maxQuantity
+          ? `দুঃখিত! সর্বোচ্চ ${maxQuantity} পিস অর্ডার করতে পারবেন।\n\nকত পিস নেবেন? (1-${maxQuantity})`
+          : `অনুগ্রহ করে সংখ্যায় বলুন কত পিস নেবেন? (1-${maxQuantity})`;
+        
+        return {
+          matched: true,
+          action: 'CONFIRM',
+          response: emoji ? `❌ ${errorMsg}` : errorMsg,
+          newState: 'AWAITING_CUSTOMER_DETAILS',
+          updatedContext: {
+            ...context,
+            state: 'AWAITING_CUSTOMER_DETAILS',
+          },
+        };
+      }
+    }
+    
+    // SIZE ADJUSTMENT: User is providing a new size (previous was out of stock)
+    if (awaitingField === 'size') {
+      let matchedSize = null;
+      let matchedColor = null;
+      const inputUpper = text.toUpperCase().trim();
+      const inputLower = text.toLowerCase().trim();
+
+      // 1. Try exact size match
+      matchedSize = availableSizes.find((s: string) => 
+        s.toUpperCase() === inputUpper
+      );
+
+      // 2. If no exact match, try parsing size AND color from input words
+      if (!matchedSize) {
+         const words = text.split(/[\s,]+/);
+         for (const word of words) {
+            // Check if word is a size
+            if (!matchedSize) {
+               matchedSize = availableSizes.find((s: string) => s.toUpperCase() === word.toUpperCase());
+            }
+            // Check if word is a color
+            if (!matchedColor) {
+               matchedColor = availableColors.find((c: string) => c.toLowerCase() === word.toLowerCase());
+            }
+         }
+      }
+      
+      if (matchedSize) {
+        console.log(`[QUICK_FORM] Size adjustment: ${matchedSize} ${matchedColor ? `Color: ${matchedColor}` : ''}`);
+        // Update partial with new size
+        size = matchedSize.toUpperCase();
+        partial.size = size;
+        partial.awaitingField = null; // Clear awaitingField
+        
+        // Update color if found in the adjustment input
+        if (matchedColor) {
+           color = matchedColor;
+           partial.color = matchedColor;
+        }
+      } else {
+        // Invalid size
+        // Determine available sizes for error message (using refined logic)
+        let fallbackSizes = inStockSizes;
+        if (fallbackSizes.length === 0 && availableSizes.length > 0) {
+           fallbackSizes = availableSizes.map((s: string) => s.toUpperCase());
+        }
+
+        return {
+          matched: true,
+          action: 'CONFIRM',
+          response: emoji 
+            ? `❌ "${text}" সাইজ ভুল!\n\nআছে: ${fallbackSizes.join(' / ')}\n\nএকটি সঠিক সাইজ লিখুন।`
+            : `"${text}" সাইজ ভুল! আছে: ${fallbackSizes.join(' / ')}`,
+          newState: 'AWAITING_CUSTOMER_DETAILS',
+          updatedContext: {
+            ...context,
+            state: 'AWAITING_CUSTOMER_DETAILS',
+          },
+        };
+      }
+    }
+  }
   
   // ========================================
   // EARLY DETECTION: Single Size/Color Input
@@ -1685,18 +1871,18 @@ function handleAwaitingCustomerDetails(
     
     if (filteredLines.length >= 3) {
       // Identify phone by pattern (most reliable)
-      const phoneIndex = lines.findIndex(line => 
+      const phoneIndex = filteredLines.findIndex(line => 
         /01[3-9]\d{8}|^\+?880/.test(line.replace(/\D/g, ''))
       );
       
       if (phoneIndex !== -1) {
-        phone = lines[phoneIndex];
+        phone = filteredLines[phoneIndex];
         if (phoneIndex > 0 && !name) {
-          name = lines[0];
+          name = filteredLines[0];
         }
         // Address is everything after phone (excluding size/color if at end)
-        if (phoneIndex < lines.length - 1 && !address) {
-          const remainingLines = lines.slice(phoneIndex + 1);
+        if (phoneIndex < filteredLines.length - 1 && !address) {
+          const remainingLines = filteredLines.slice(phoneIndex + 1);
           
           // Check last few lines for size, color, and quantity (in any order)
           // Work backwards from the end
@@ -1741,9 +1927,9 @@ function handleAwaitingCustomerDetails(
           address = remainingLines.join('\n');
         }
       } else {
-        if (!name) name = lines[0];
-        if (!phone) phone = lines[1];
-        if (!address) address = lines.slice(2).join('\n');
+        if (!name) name = filteredLines[0];
+        if (!phone) phone = filteredLines[1];
+        if (!address) address = filteredLines.slice(2).join('\n');
       }
     } else if (lines.length === 2) {
       const phoneIndex = lines.findIndex(line => 
@@ -1772,11 +1958,34 @@ function handleAwaitingCustomerDetails(
     c.toLowerCase() === color?.toLowerCase()
   ));
   
-  // Validate stock for selected size
-  let stockAvailable = 999; // Default high value if no size_stock
+  // Validate stock for selected size (and color if variant_stock exists)
+  let stockAvailable = 999; // Default high value if no stock tracking
   let stockError: string | null = null;
   
-  if (size && productAny?.size_stock && Array.isArray(productAny.size_stock)) {
+  // Priority: variant_stock (Size×Color) > size_stock (Size only) > total stock
+  const variantStockData = productAny?.variant_stock;
+  
+  if (size && color && variantStockData && Array.isArray(variantStockData)) {
+    // Variant Stock: Check specific Size×Color combination
+    const variantEntry = variantStockData.find((v: any) => 
+      v.size?.toUpperCase() === size.toUpperCase() && 
+      v.color?.toLowerCase() === color.toLowerCase()
+    );
+    
+    if (variantEntry) {
+      stockAvailable = variantEntry.quantity || 0;
+      if (quantity > stockAvailable) {
+        stockError = stockAvailable === 0 
+          ? `দুঃখিত! "${size}" সাইজে "${color}" কালার স্টকে নেই। অন্য সাইজ/কালার বেছে নিন।`
+          : `দুঃখিত! "${size}" সাইজে "${color}" কালারে মাত্র ${stockAvailable} পিস আছে। সর্বোচ্চ ${stockAvailable} পিস অর্ডার করতে পারবেন।`;
+      }
+    } else {
+      // Combination doesn't exist in variant_stock = out of stock
+      stockAvailable = 0;
+      stockError = `দুঃখিত! "${size}" সাইজে "${color}" কালার স্টকে নেই।`;
+    }
+  } else if (size && productAny?.size_stock && Array.isArray(productAny.size_stock)) {
+    // Size Stock: Fallback to size-only check
     const sizeStock = productAny.size_stock.find((ss: any) => 
       ss.size?.toUpperCase() === size.toUpperCase()
     );
@@ -1801,16 +2010,106 @@ function handleAwaitingCustomerDetails(
     }
   }
   
-  // Return error if stock is insufficient
+  // Return error if stock is insufficient - BUT SAVE VALID DATA!
   if (stockError) {
+    // ========================================
+    // STOCK ERROR: Save valid fields and set awaitingField
+    // This allows user to just provide corrected quantity/size
+    // ========================================
+    const isOutOfStock = stockAvailable === 0;
+    
+    // Build partialForm with all valid data
+    const stockErrorPartialForm = {
+      name: name || partial.name || null,
+      phone: isPhoneValid ? phone : (partial.phone || null),
+      address: address || partial.address || null,
+      size: isOutOfStock ? null : (isSizeValid ? size : partial.size || null), // Clear size if out of stock
+      color: isColorValid ? color : (partial.color || null),
+      quantity: 1, // Reset quantity for re-entry
+      awaitingField: isOutOfStock ? 'size' : 'quantity', // What we need from user
+      maxQuantity: isOutOfStock ? 999 : stockAvailable, // Max allowed
+    };
+    
+    console.log(`[QUICK_FORM] Stock error - saving partial form:`, stockErrorPartialForm);
+    
+    // Determine available sizes for the error message
+    let inStockSizes: string[] = [];
+    if (stockVariantData && Array.isArray(stockVariantData)) {
+      // Filter variants by color if a color is selected, then get unique sizes with quantity > 0
+      const relevantVariants = color
+        ? stockVariantData.filter((v: any) => v.color?.toLowerCase() === color?.toLowerCase() && v.quantity > 0)
+        : stockVariantData.filter((v: any) => v.quantity > 0);
+      inStockSizes = [...new Set(relevantVariants.map((v: any) => v.size?.toUpperCase()))].filter(Boolean);
+    } else if (productAny?.size_stock && Array.isArray(productAny.size_stock)) {
+      // Get unique sizes with quantity > 0 from size_stock
+      inStockSizes = productAny.size_stock
+        .filter((ss: any) => ss.quantity > 0)
+        .map((ss: any) => ss.size?.toUpperCase())
+        .filter(Boolean);
+    }
+    // Fallback logic refinement
+    if (inStockSizes.length === 0 && availableSizes.length > 0 && !color) {
+      inStockSizes = availableSizes.map((s: string) => s.toUpperCase());
+    }
+
+    // NEW: Find available colors for the requested size (Cross-Recommendation)
+    let inStockColorsForSize: string[] = [];
+    if (stockVariantData && Array.isArray(stockVariantData) && size) {
+       const relevantVariants = stockVariantData.filter((v: any) => 
+         v.size?.toUpperCase() === size.toUpperCase() && 
+         v.quantity > 0
+       );
+       inStockColorsForSize = [...new Set(relevantVariants.map((v: any) => v.color))].filter(Boolean);
+    }
+
+    // Modify error message to be more helpful
+    let baseError = stockError || `❌ "${size}" সাইজ স্টকে নেই!`;
+    if (!baseError.startsWith('❌') && !baseError.startsWith('দুঃখিত')) {
+      baseError = `❌ ${baseError}`;
+    }
+
+    const start = baseError.startsWith('❌') ? '' : '❌ ';
+    
+    // Construct final message with smart suggestions
+    let adjustedError = '';
+    if (isOutOfStock) {
+       adjustedError = `${start}${baseError}`;
+       
+       const suggestions = [];
+       
+       // Suggest sizes for the requested color
+       if (color && inStockSizes.length > 0) {
+         suggestions.push(`👉 "${color}" কালারে আছে: ${inStockSizes.join(' / ')}`);
+       } else if (!color && inStockSizes.length > 0) {
+         suggestions.push(`👉 স্টকে আছে: ${inStockSizes.join(' / ')}`);
+       }
+       
+       // Suggest colors for the requested size
+       if (size && inStockColorsForSize.length > 0) {
+          suggestions.push(`👉 "${size}" সাইজে আছে: ${inStockColorsForSize.join(' / ')}`);
+       }
+       
+       if (suggestions.length > 0) {
+         adjustedError += `\n\n${suggestions.join('\n')}`;
+       }
+       
+       adjustedError += `\n\nঅন্য সাইজ বা কালার লিখুন। (যেমন: M Blue)`;
+    } else {
+       adjustedError = `${start}${stockError}\n\nকত পিস নেবেন? (1-${stockAvailable})`;
+    }
+    
     return {
       matched: true,
       action: 'CONFIRM',
-      response: emoji ? `❌ ${stockError}` : stockError,
+      response: emoji ? adjustedError : adjustedError.replace(/❌/g, ''),
       newState: 'AWAITING_CUSTOMER_DETAILS',
       updatedContext: {
         ...context,
         state: 'AWAITING_CUSTOMER_DETAILS',
+        checkout: {
+          ...context.checkout,
+          partialForm: stockErrorPartialForm,
+        },
       },
     };
   }

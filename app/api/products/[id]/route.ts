@@ -115,6 +115,7 @@ export async function PATCH(
         ...(updateData.colors && { colors: updateData.colors }),
         ...(updateData.sizes && { sizes: updateData.sizes }),
         ...(updateData.size_stock && { size_stock: updateData.size_stock }),
+        ...(updateData.variant_stock && { variant_stock: updateData.variant_stock }),
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)

@@ -359,9 +359,6 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       } catch (error) {
         console.error('❌ AI Director failed:', error);
         
-        // Rollback context on error (context wasn't modified yet, but good practice)
-        currentContext = previousContext;
-        
         // Send user-friendly fallback message
         const fallbackMessage = "দুঃখিত, আমাদের একটা technical সমস্যা হয়েছে। একটু পরে আবার try করুন। 🙏";
         
@@ -1205,32 +1202,56 @@ async function createOrderInDb(
       // Fetch current product data
       const { data: product } = await supabase
         .from('products')
-        .select('size_stock, stock_quantity')
+        .select('size_stock, variant_stock, stock_quantity')
         .eq('id', item.productId)
         .single();
       
       if (product) {
-        if (selectedSize && product.size_stock && Array.isArray(product.size_stock)) {
-          // Deduct from size-specific stock
-          const updatedSizeStock = product.size_stock.map((ss: any) => {
-            if (ss.size?.toUpperCase() === selectedSize.toUpperCase()) {
-              return { ...ss, quantity: Math.max(0, (ss.quantity || 0) - orderQuantity) };
+        // Priority 1: Variant Stock (Size×Color)
+        const selectedColor = itemAny.selectedColor || itemAny.variations?.color;
+        
+        if (selectedSize && selectedColor && product.variant_stock && Array.isArray(product.variant_stock)) {
+          // Deduct from variant-specific stock
+          const updatedVariantStock = product.variant_stock.map((vs: any) => {
+            if (
+              vs.size?.toUpperCase() === selectedSize.toUpperCase() && 
+              vs.color?.toLowerCase() === selectedColor.toLowerCase()
+            ) {
+              return { ...vs, quantity: Math.max(0, (vs.quantity || 0) - orderQuantity) };
             }
-            return ss;
+            return vs;
           });
           
-          const newTotalStock = updatedSizeStock.reduce((sum: number, ss: any) => sum + (ss.quantity || 0), 0);
+          // Also update size_stock totals if they exist
+          let updatedSizeStock = product.size_stock;
+          if (product.size_stock && Array.isArray(product.size_stock)) {
+             updatedSizeStock = product.size_stock.map((ss: any) => {
+                if (ss.size?.toUpperCase() === selectedSize.toUpperCase()) {
+                  // Re-calculate size total from variants
+                  const sizeVariants = updatedVariantStock.filter((v: any) => v.size?.toUpperCase() === selectedSize.toUpperCase());
+                  const newSizeTotal = sizeVariants.reduce((sum: number, v: any) => sum + (v.quantity || 0), 0);
+                  return { ...ss, quantity: newSizeTotal };
+                }
+                return ss;
+             });
+          }
+          
+          const newTotalStock = updatedVariantStock.reduce((sum: number, vs: any) => sum + (vs.quantity || 0), 0);
           
           await supabase
             .from('products')
             .update({ 
+              variant_stock: updatedVariantStock,
               size_stock: updatedSizeStock,
               stock_quantity: newTotalStock
             })
             .eq('id', item.productId);
-          
-          console.log(`📉 Stock deducted for ${item.productName}: ${selectedSize} -${orderQuantity}`);
-        } else {
+            
+          console.log(`📉 Stock deducted for ${item.productName}: ${selectedSize}/${selectedColor} -${orderQuantity}`);
+        
+        } else if (selectedSize && product.size_stock && Array.isArray(product.size_stock)) {
+          // Priority 2: Size Stock (Size only)
+          // Deduct from size-specific stock
           // Deduct from total stock
           const newStock = Math.max(0, (product.stock_quantity || 0) - orderQuantity);
           

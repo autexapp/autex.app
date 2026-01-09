@@ -62,3 +62,7 @@ logs
 
 # pnpm
 .pnpm-debug.log*
+
+# Security
+env.txt
+encrypted_token.txt

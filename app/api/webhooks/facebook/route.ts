@@ -252,6 +252,7 @@ async function processMessagingEvent(
             colors: product.colors || [],
             // Include stock info for validation
             size_stock: product.size_stock || [],
+            variant_stock: product.variant_stock || [],
             stock_quantity: product.stock_quantity || 0,
           };
           
@@ -331,12 +332,20 @@ async function processMessagingEvent(
             let message = settings.quick_form_prompt || 
               'দারুণ! অর্ডারটি সম্পন্ন করতে, অনুগ্রহ করে নিচের ফর্ম্যাট অনুযায়ী আপনার তথ্য দিন:\n\nনাম:\nফোন:\nসম্পূর্ণ ঠিকানা:';
             
-            // Append size field if product has sizes
-            const hasSizes = product.sizes && product.sizes.length > 0;
+            // Filter sizes to only show in-stock ones
+            const allSizes = product.sizes || [];
+            const sizeStock = product.size_stock || [];
+            const inStockSizes = allSizes.filter((sz: string) => {
+              if (sizeStock.length === 0) return true; // No stock tracking, show all
+              const stockEntry = sizeStock.find((ss: any) => ss.size?.toUpperCase() === sz.toUpperCase());
+              return !stockEntry || stockEntry.quantity > 0;
+            });
+            
+            const hasSizes = inStockSizes.length > 0;
             const hasColors = product.colors && product.colors.length > 1;
             
             if (hasSizes) {
-              message += `\nসাইজ: (${product.sizes.join('/')})`;
+              message += `\nসাইজ: (${inStockSizes.join('/')})`;
             }
             
             if (hasColors) {

@@ -38,6 +38,9 @@ export interface CartItem {
   // Selected values
   selectedSize?: string;
   selectedColor?: string;
+  // Stock information for validation
+  size_stock?: any[];
+  variant_stock?: any[];
 }
 
 // ============================================
@@ -52,6 +55,8 @@ export interface CheckoutInfo {
   totalAmount?: number;
   paymentMethod?: 'cod' | 'bkash' | 'nagad' | 'bank';
   paymentLastTwoDigits?: string;
+  // Partial form data for Quick Form
+  partialForm?: any;
 }
 
 // ============================================

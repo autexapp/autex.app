@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Loader2, Upload, X, Plus, Trash2 } from 'lucide-react';
 import Image from 'next/image';
+import { VariantStockMatrix, VariantStockItem } from './variant-stock-matrix';
 import {
   Dialog,
   DialogContent,
@@ -60,6 +61,7 @@ interface Product {
   colors?: string[] | null;
   sizes?: string[] | null;
   size_stock?: SizeStockItem[] | null;
+  variant_stock?: VariantStockItem[] | null;
 }
 
 interface ProductFormProps {
@@ -82,6 +84,7 @@ export function ProductForm({
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [sizeStock, setSizeStock] = useState<SizeStockItem[]>([]);
+  const [variantStock, setVariantStock] = useState<VariantStockItem[]>([]);
   const [newSize, setNewSize] = useState('');
   const [newQuantity, setNewQuantity] = useState('10');
 
@@ -109,14 +112,34 @@ export function ProductForm({
       setImagePreview(product.image_urls?.[0] || null);
       setImageFile(null);
       
-      // Load size_stock if exists, otherwise convert from sizes array
+      // Load size_stock and variant_stock
       if (product.size_stock && product.size_stock.length > 0) {
         setSizeStock(product.size_stock);
       } else if (product.sizes && product.sizes.length > 0) {
-        // Convert legacy sizes to size_stock format
         setSizeStock(product.sizes.map(size => ({ size, quantity: 10 })));
       } else {
         setSizeStock([]);
+      }
+      
+      if (product.variant_stock && product.variant_stock.length > 0) {
+        setVariantStock(product.variant_stock);
+      } else if (product.size_stock && product.size_stock.length > 0) {
+        // Initialize variant stock from size stock
+        // If product has colors, assign stock to first color? Or keep as 'Standard' and let user distribute?
+        // Issue: Matrix won't show 'Standard' if colors are defined.
+        // Solution: If colors exist, assign to the first color by default.
+        
+        const defaultColor = product.colors && product.colors.length > 0 
+          ? product.colors[0] 
+          : 'Standard';
+          
+        setVariantStock(product.size_stock.map(s => ({ 
+          size: s.size, 
+          color: defaultColor, 
+          quantity: s.quantity 
+        })));
+      } else {
+        setVariantStock([]);
       }
     } else {
       form.reset({
@@ -129,6 +152,7 @@ export function ProductForm({
       setImagePreview(null);
       setImageFile(null);
       setSizeStock([]);
+      setVariantStock([]);
     }
     setNewSize('');
     setNewQuantity('10');
@@ -179,7 +203,10 @@ export function ProductForm({
 
   // Remove a size-stock entry
   const removeSizeStock = (index: number) => {
+    const sizeToRemove = sizeStock[index].size;
     setSizeStock(sizeStock.filter((_, i) => i !== index));
+    // Also remove from variant stock
+    setVariantStock(variantStock.filter(v => v.size !== sizeToRemove));
   };
 
   // Update quantity for a size
@@ -200,16 +227,43 @@ export function ProductForm({
       if (values.category) formData.append('category', values.category);
       if (values.colors) formData.append('colors', values.colors);
       
-      // Send size_stock as JSON
-      if (sizeStock.length > 0) {
-        formData.append('size_stock', JSON.stringify(sizeStock));
+      // Process stock data
+      const colorsStr = values.colors || '';
+      const activeColors = colorsStr.split(',').map(c => c.trim()).filter(c => c.length > 0);
+      const isVariantMode = activeColors.length > 0;
+      
+      // Filter variant stock to only include active sizes and colors
+      // If no colors defined, map to 'Standard'
+      const finalVariantStock = variantStock.filter(v => 
+        sizeStock.some(s => s.size === v.size) && 
+        (isVariantMode ? activeColors.includes(v.color) : v.color === 'Standard')
+      );
+      
+      // If we have sizes but no variant stock (fresh add), try to populate from sizeStock quantities?
+      // Actually Matrix handles inputs.
+      
+      // Recalculate size_stock totals from variants
+      const finalSizeStock = sizeStock.map(s => {
+        const variantsForSize = finalVariantStock.filter(v => v.size === s.size);
+        const totalQty = variantsForSize.reduce((sum, v) => sum + v.quantity, 0);
+        return { size: s.size, quantity: totalQty };
+      });
+      
+      const totalStock = finalSizeStock.reduce((sum, item) => sum + item.quantity, 0);
+
+      if (finalSizeStock.length > 0) {
+        // Send size_stock JSON (totals)
+        formData.append('size_stock', JSON.stringify(finalSizeStock));
+        // Send variant_stock JSON (details)
+        formData.append('variant_stock', JSON.stringify(finalVariantStock));
         // Also send sizes array for backward compatibility
-        formData.append('sizes', sizeStock.map(s => s.size).join(', '));
-        // Calculate total stock from size quantities
-        const totalStock = sizeStock.reduce((sum, item) => sum + item.quantity, 0);
+        formData.append('sizes', finalSizeStock.map(s => s.size).join(', '));
+        
         formData.append('stock_quantity', totalStock.toString());
       } else {
         formData.append('stock_quantity', '0');
+        formData.append('size_stock', '[]');
+        formData.append('variant_stock', '[]');
       }
 
       if (imageFile) {
@@ -364,60 +418,14 @@ export function ProductForm({
                 ))}
               </div>
 
-              {/* Size stock list */}
-              {sizeStock.length > 0 && (
-                <div className="border rounded-lg divide-y">
-                  {sizeStock.map((item, index) => (
-                    <div key={index} className="flex items-center gap-2 p-2">
-                      <span className="font-medium w-16 text-sm">{item.size}</span>
-                      <Input
-                        type="number"
-                        min="0"
-                        value={item.quantity === 0 ? '' : item.quantity}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          updateQuantity(index, val === '' ? 0 : parseInt(val) || 0);
-                        }}
-                        onBlur={(e) => {
-                          // Ensure we show 0 when field is empty on blur
-                          if (e.target.value === '') {
-                            updateQuantity(index, 0);
-                          }
-                        }}
-                        placeholder="0"
-                        className="w-20 h-8 text-sm"
-                      />
-                      <span className="text-xs text-muted-foreground">pcs</span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 ml-auto text-destructive hover:text-destructive"
-                        onClick={() => removeSizeStock(index)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
               {/* Add custom size */}
-              <div className="flex gap-2">
+              <div className="flex gap-2 mb-4 mt-2">
                 <Input
                   placeholder="Custom size (e.g., 42, Free)"
                   value={newSize}
                   onChange={(e) => setNewSize(e.target.value)}
-                  className="flex-1 h-9"
+                  className="max-w-[200px] h-9"
                   onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addSizeStock())}
-                />
-                <Input
-                  type="number"
-                  min="0"
-                  placeholder="Qty"
-                  value={newQuantity}
-                  onChange={(e) => setNewQuantity(e.target.value)}
-                  className="w-20 h-9"
                 />
                 <Button
                   type="button"
@@ -426,20 +434,40 @@ export function ProductForm({
                   className="h-9"
                   onClick={addSizeStock}
                 >
-                  <Plus className="h-4 w-4" />
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Size
                 </Button>
               </div>
-              
-              {sizeStock.length === 0 && (
-                <p className="text-xs text-muted-foreground">
-                  Click sizes above or add custom sizes. Total stock is calculated from size quantities.
-                </p>
+
+              {/* Variant Stock Matrix */}
+              {sizeStock.length > 0 && (
+                <VariantStockMatrix
+                  sizes={sizeStock.map(s => s.size)}
+                  colors={form.watch('colors')?.split(',') || []}
+                  value={variantStock}
+                  onChange={setVariantStock}
+                  onRemoveSize={removeSizeStock}
+                />
               )}
               
               {sizeStock.length > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  Total Stock: {sizeStock.reduce((sum, item) => sum + item.quantity, 0)} pcs
-                </p>
+                <div className="flex justify-between text-sm text-muted-foreground mt-2">
+                   <span>
+                     Total Variants: {
+                       variantStock.filter(v => 
+                         sizeStock.some(s => s.size === v.size) &&
+                         (form.watch('colors') ? form.watch('colors')?.includes(v.color) : v.color === 'Standard')
+                       ).length
+                     }
+                   </span>
+                   <span className="font-medium">
+                     Total Stock: {
+                       variantStock
+                         .filter(v => sizeStock.some(s => s.size === v.size))
+                         .reduce((sum, item) => sum + item.quantity, 0)
+                     } pcs
+                   </span>
+                </div>
               )}
             </div>
 

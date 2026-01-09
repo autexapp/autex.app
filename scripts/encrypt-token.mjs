@@ -9,10 +9,10 @@ const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
 
 // Your new Facebook Page Access Token
-const NEW_TOKEN = 'EAAT0ZBuekbdEBQYfI5WaSfgrjyVs3rOenuVNR3uzhQEZCFOtUh41ZB9oPlL8v8M12yKyyKBOMZA6WljsBDd6pLvte6vCOtmSFehuvEkZCYvuhCFkJvvlmnvhCRDkQPghEmIZBVyDzBCvRE5BZADAtOzTJVrcKXfnqm1fPvSMu7Mi1YZC5iodnlaOKYZALFQjIJXtQwRFZBjZBDQSNcaDu2MrqozXXZB4PXvaJJZBkTsVJS9owjAL6';
+const NEW_TOKEN = 'EAAT0ZBuekbdEBQedjZBB6ZB4lgLYxCS51GF1vE4ObnSCZChT2aUzbGfBmzJLQVhO8EnOOAKv874jR9NhZBZC0ktjitDtpv5e5PY8ahAcFfK9mthvxmaWcXvVfPMoLu1O2a6yyL5VIez28zh89zlUXmNZCMw4HshzmMyEXpiRZCovfvnTZA8C3XvuZA9CvtH9Vg';
 
-// Your encryption key
-const ENCRYPTION_KEY = 'aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890ab';
+// Your encryption key from environment
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890ab';
 
 const getEncryptionKey = () => {
   const key = Buffer.from(ENCRYPTION_KEY);

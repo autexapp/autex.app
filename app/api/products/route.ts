@@ -285,7 +285,7 @@ export async function POST(request: NextRequest) {
       const parsed = JSON.parse(cleanedContent);
       searchKeywords = parsed.keywords || [];
 
-      console.log(`✓ Generated ${searchKeywords.length} keywords:`, searchKeywords.slice(0, 5));
+      console.log(`✓ Generated ${searchKeywords?.length || 0} keywords:`, searchKeywords?.slice(0, 5));
       console.log(`  Cost: $${autoTaggingCost.toFixed(6)}`);
 
       // Track API usage
@@ -319,6 +319,7 @@ export async function POST(request: NextRequest) {
         colors: productData.colors || [],
         sizes: productData.sizes || [],
         size_stock: productData.size_stock || [], // NEW: per-size stock tracking
+        variant_stock: productData.variant_stock || [], // NEW: variant stock tracking
       })
       .select()
       .single();
