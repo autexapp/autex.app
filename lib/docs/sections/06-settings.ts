@@ -14,69 +14,151 @@ export const settingsSection: DocSection = {
       id: 'ai-setup',
       slug: 'ai-setup',
       order: 1,
-      title: { en: 'AI Setup', bn: 'AI সেটআপ' },
+      title: { en: 'Configuring Your Bot', bn: 'Bot Configure করা' },
       content: {
-        en: `# AI Setup
+        en: `# Configuring Your Bot
 
-Configure how the AI bot communicates with your customers.
+Customize how your bot greets customers and handles conversations.
 
-## Accessing AI Setup
+## 🤖 Accessing AI Setup
 
-Go to **AI Setup** in the sidebar.
+Go to **AI Setup** in the sidebar menu.
 
-## Configurable Settings
+## ✉️ Greeting Message
 
-### Greeting Message
-The first message customers see when they message your page.
+This is the first message customers see when they message your page.
 
-**Example:**
-> "আসসালামু আলাইকুম! 🌟 [Shop Name] এ স্বাগতম। পছন্দের পণ্যের ছবি পাঠান, আমি অর্ডার নিতে সাহায্য করব!"
+### Writing a Great Greeting
 
-### Out of Stock Message
-What to say when a product is out of stock.
+| Element | Example |
+|---------|---------|
+| Warm opening | "আসসালামু আলাইকুম! 🌟" |
+| Business name | "Welcome to [Your Shop]!" |
+| What to do next | "পছন্দের পণ্যের ছবি পাঠান!" |
+| Friendly emoji | 😊 🛍️ 💬 |
 
-### Business Information
-- Shop name
-- Contact details
-- Operating hours
+### Sample Greetings
 
-## Tips
+**Bangla Style:**
+\`\`\`
+আসসালামু আলাইকুম! 🌟
+[Shop Name] এ স্বাগতম!
 
-- Keep messages friendly and helpful
-- Use emojis for a personal touch
-- Include your shop name
-- Mention what customers should do next
+পছন্দের পণ্যের ছবি পাঠান অথবা কি লাগবে বলুন। 
+আমি অর্ডার নিতে সাহায্য করব! 😊
+\`\`\`
+
+**English Style:**
+\`\`\`
+Hi there! 👋
+Welcome to [Shop Name]!
+
+Send a photo of what you're looking for, or describe it.
+I'll help you place an order! 🛍️
+\`\`\`
+
+---
+
+## 🚚 Delivery Charges
+
+Set how much to charge for delivery:
+
+| Location | Typical Charge |
+|----------|----------------|
+| Inside Dhaka | ৳60 - ৳80 |
+| Outside Dhaka | ৳120 - ৳150 |
+
+The bot automatically detects location from customer's address and applies the correct charge.
+
+---
+
+## 💼 Business Information
+
+Add your business details so the bot can share them:
+- **Business Name** — Your shop name
+- **Contact Number** — Your phone/WhatsApp
+- **Business Address** — Physical location (if any)
+
+---
+
+## 💡 Tips
+
+1. **Keep it short** — Long greetings may bore customers
+2. **Use emojis** — Makes messages friendly 😊
+3. **Mention what to do** — Tell them to send a photo
+4. **Test it yourself** — Message your page from another account
 `,
-        bn: `# AI সেটআপ
+        bn: `# Bot Configure করা
 
-AI bot কিভাবে customers এর সাথে communicate করবে সেটা configure করুন।
+আপনার bot কিভাবে customers কে greet করবে আর conversations handle করবে customize করুন।
 
-## AI Setup এ যাওয়া
+## 🤖 AI Setup Access করা
 
-Sidebar এ **AI Setup** এ যান।
+Sidebar menu তে **AI Setup** এ যান।
 
-## Configurable Settings
+## ✉️ Greeting Message
 
-### Greeting Message
 Customers আপনার page এ message করলে যে প্রথম message দেখে।
 
-**উদাহরণ:**
-> "আসসালামু আলাইকুম! 🌟 [Shop Name] এ স্বাগতম। পছন্দের পণ্যের ছবি পাঠান, আমি অর্ডার নিতে সাহায্য করব!"
+### ভালো Greeting লেখা
 
-### Out of Stock Message
-Product stock এ না থাকলে কী বলবে।
+| Element | Example |
+|---------|---------|
+| Warm opening | "আসসালামু আলাইকুম! 🌟" |
+| Business name | "[Your Shop] এ স্বাগতম!" |
+| কি করতে হবে | "পছন্দের পণ্যের ছবি পাঠান!" |
+| Friendly emoji | 😊 🛍️ 💬 |
 
-### Business Information
-- Shop name
-- Contact details
-- Operating hours
+### Sample Greetings
 
-## টিপস
+**Bangla Style:**
+\`\`\`
+আসসালামু আলাইকুম! 🌟
+[Shop Name] এ স্বাগতম!
 
-- Messages friendly এবং helpful রাখুন
-- Personal touch এর জন্য emojis ব্যবহার করুন
-- আপনার shop name include করুন
-- Customers এর next step mention করুন
+পছন্দের পণ্যের ছবি পাঠান অথবা কি লাগবে বলুন। 
+আমি অর্ডার নিতে সাহায্য করব! 😊
+\`\`\`
+
+**English Style:**
+\`\`\`
+Hi there! 👋
+Welcome to [Shop Name]!
+
+Send a photo of what you're looking for, or describe it.
+I'll help you place an order! 🛍️
+\`\`\`
+
+---
+
+## 🚚 Delivery Charges
+
+Delivery এর জন্য কত charge করবেন set করুন:
+
+| Location | সাধারণ Charge |
+|----------|---------------|
+| ঢাকার ভিতরে | ৳৬০ - ৳৮০ |
+| ঢাকার বাইরে | ৳১২০ - ৳১৫০ |
+
+Bot automatically customer এর address থেকে location detect করে সঠিক charge apply করে।
+
+---
+
+## 💼 Business Information
+
+আপনার business details add করুন যাতে bot share করতে পারে:
+- **Business Name** — আপনার shop এর নাম
+- **Contact Number** — আপনার phone/WhatsApp
+- **Business Address** — Physical location (থাকলে)
+
+---
+
+## 💡 Tips
+
+1. **Short রাখুন** — Long greetings customers কে bore করতে পারে
+2. **Emojis use করুন** — Messages friendly হয় 😊
+3. **কি করতে হবে বলুন** — Photo পাঠাতে বলুন
+4. **নিজে test করুন** — অন্য account থেকে page এ message করুন
 `
       }
     },
@@ -84,57 +166,448 @@ Product stock এ না থাকলে কী বলবে।
       id: 'delivery-settings',
       slug: 'delivery-settings',
       order: 2,
-      title: { en: 'Delivery Settings', bn: 'ডেলিভারি সেটিংস' },
+      title: { en: 'Delivery Settings', bn: 'Delivery Settings' },
       content: {
         en: `# Delivery Settings
 
 Configure delivery charges and options for your orders.
 
-## Setting Delivery Charges
+## 💰 Setting Delivery Charges
 
-1. Go to **Settings** in sidebar
-2. Find **Delivery Settings** section
-3. Set charges for:
-   - Inside Dhaka
-   - Outside Dhaka
+### Access
+Go to **AI Setup** → Find the **Delivery Charges** section.
 
-## Common Pricing
+### Configuration
 
-| Location | Typical Charge |
-|----------|----------------|
-| Inside Dhaka | ৳60 - ৳80 |
-| Outside Dhaka | ৳120 - ৳150 |
+| Field | What to Enter |
+|-------|---------------|
+| Inside Dhaka | Amount in ৳ (e.g., 60) |
+| Outside Dhaka | Amount in ৳ (e.g., 120) |
 
-## Tips
+---
 
-- Consider free delivery for orders above a certain amount
-- Update charges if courier prices change
-- Be transparent about delivery costs
+## 📍 How Location Detection Works
+
+When customer gives address, bot checks for Dhaka keywords:
+- Dhaka, ঢাকা
+- Gulshan, Banani, Dhanmondi, Mirpur, Uttara
+- And more...
+
+**Match found?** → Inside Dhaka charge
+**No match?** → Outside Dhaka charge
+
+---
+
+## 💵 Common Pricing Strategies
+
+| Strategy | Inside Dhaka | Outside Dhaka |
+|----------|--------------|---------------|
+| Standard | ৳60 | ৳120 |
+| Free Dhaka | ৳0 | ৳120 |
+| Premium | ৳80 | ৳150 |
+| Flat Rate | ৳100 | ৳100 |
+
+---
+
+## 📊 Delivery in Order Summary
+
+When bot shows order confirmation:
+\`\`\`
+📦 Product: Blue Polo Shirt - ৳850
+🚚 Delivery: Dhaka - ৳60
+━━━━━━━━━━━━━━
+💰 Total: ৳910
+\`\`\`
+
+---
+
+## 💡 Tips
+
+- **Be competitive** — Check what competitors charge
+- **Consider free delivery** — For orders above certain amount
+- **Update when courier rates change** — Keep charges accurate
+- **Communicate clearly** — Customers appreciate transparency
 `,
-        bn: `# ডেলিভারি সেটিংস
+        bn: `# Delivery Settings
 
-আপনার orders এর জন্য delivery charges এবং options configure করুন।
+Orders এর জন্য delivery charges আর options configure করুন।
 
-## Delivery Charges সেট করা
+## 💰 Delivery Charges Set করা
 
-1. Sidebar এ **Settings** এ যান
-2. **Delivery Settings** section খুঁজুন
-3. Charges set করুন:
-   - ঢাকার ভিতরে
-   - ঢাকার বাইরে
+### Access
+**AI Setup** এ যান → **Delivery Charges** section খুঁজুন।
 
-## সাধারণ Pricing
+### Configuration
 
-| Location | Typical Charge |
-|----------|----------------|
-| ঢাকার ভিতরে | ৳৬০ - ৳৮০ |
-| ঢাকার বাইরে | ৳১২০ - ৳১৫০ |
+| Field | কি Enter করবেন |
+|-------|----------------|
+| ঢাকার ভিতরে | ৳ তে amount (যেমন: ৬০) |
+| ঢাকার বাইরে | ৳ তে amount (যেমন: ১২০) |
 
-## টিপস
+---
 
-- নির্দিষ্ট amount এর উপরে free delivery consider করুন
-- Courier prices পরিবর্তন হলে charges update করুন
-- Delivery costs সম্পর্কে transparent থাকুন
+## 📍 Location Detection কিভাবে কাজ করে
+
+Customer address দিলে, bot Dhaka keywords check করে:
+- Dhaka, ঢাকা
+- Gulshan, Banani, Dhanmondi, Mirpur, Uttara
+- আরো অনেক...
+
+**Match পাওয়া গেলে?** → ঢাকার ভিতরের charge
+**Match না পেলে?** → ঢাকার বাইরের charge
+
+---
+
+## 💵 Common Pricing Strategies
+
+| Strategy | ঢাকার ভিতরে | ঢাকার বাইরে |
+|----------|-------------|-------------|
+| Standard | ৳৬০ | ৳১২০ |
+| Free Dhaka | ৳০ | ৳১২০ |
+| Premium | ৳৮০ | ৳১৫০ |
+| Flat Rate | ৳১০০ | ৳১০০ |
+
+---
+
+## 📊 Order Summary তে Delivery
+
+Bot order confirmation দেখায়:
+\`\`\`
+📦 Product: Blue Polo Shirt - ৳৮৫০
+🚚 Delivery: Dhaka - ৳৬০
+━━━━━━━━━━━━━━
+💰 Total: ৳৯১০
+\`\`\`
+
+---
+
+## 💡 Tips
+
+- **Competitive থাকুন** — Competitors কত charge করে check করুন
+- **Free delivery consider করুন** — নির্দিষ্ট amount এর উপরে orders এ
+- **Courier rates change হলে update করুন** — Charges accurate রাখুন
+- **Clearly communicate করুন** — Customers transparency appreciate করে
+`
+      }
+    },
+    {
+      id: 'bot-toggle',
+      slug: 'bot-toggle',
+      order: 3,
+      title: { en: 'Turning Bot On/Off', bn: 'Bot On/Off করা' },
+      summary: {
+        en: 'Control when your bot responds',
+        bn: 'Bot কখন respond করবে control করুন'
+      },
+      content: {
+        en: `# Turning Bot On/Off
+
+Sometimes you need to pause the bot. Here's how to control it.
+
+## 🔌 Global Bot Toggle
+
+The global toggle turns bot ON or OFF for your entire page.
+
+### Where to Find It
+1. Go to **Settings**
+2. Find **Connected Facebook Pages** section
+3. Look for the **Bot toggle switch** next to your page
+
+### Toggle States
+
+| State | What Happens |
+|-------|--------------|
+| ✅ **ON** | Bot responds to all messages automatically |
+| ❌ **OFF** | Bot is silent. You must respond manually. |
+
+---
+
+## ⚠️ When to Turn Off Bot
+
+| Situation | Action |
+|-----------|--------|
+| Technical issues with bot | Turn OFF, fix, turn ON |
+| Major announcement to customers | Turn OFF briefly |
+| Personal vacation (handling messages yourself) | Turn OFF |
+| Testing new settings | Turn OFF temporarily |
+
+---
+
+## 🚨 Warning When Disabling
+
+When you turn OFF the bot, you'll see:
+
+> ⚠️ **Warning:** Turning off the bot means no automatic responses. Customers will wait for your manual reply.
+
+Make sure you're ready to respond manually before disabling!
+
+---
+
+## 📱 Bot Disabled Indicators
+
+When bot is OFF:
+- **Settings page** — Toggle shows OFF
+- **Conversations page** — Warning banner at top
+- **Conversation detail** — "Bot Disabled" badge
+
+---
+
+## 🔄 Per-Page Control
+
+If you have multiple Facebook pages connected:
+- Each page has its own toggle
+- Turn one OFF without affecting others
+- Useful for managing multiple businesses
+
+---
+
+## 💡 Best Practices
+
+1. **Don't leave bot OFF for long** — Customers expect fast responses
+2. **Communicate downtime** — Post on page if bot will be offline
+3. **Turn ON during peak hours** — Bot works 24/7, you don't have to
+4. **Test after turning back ON** — Make sure it's working
+`,
+        bn: `# Bot On/Off করা
+
+কখনো কখনো bot pause করার দরকার হয়। এখানে দেখুন কিভাবে control করবেন।
+
+## 🔌 Global Bot Toggle
+
+Global toggle পুরো page এর জন্য bot ON বা OFF করে।
+
+### কোথায় পাবেন
+1. **Settings** এ যান
+2. **Connected Facebook Pages** section খুঁজুন
+3. Page এর পাশে **Bot toggle switch** দেখুন
+
+### Toggle States
+
+| State | কি হয় |
+|-------|--------|
+| ✅ **ON** | Bot automatically সব messages এ respond করে |
+| ❌ **OFF** | Bot silent। আপনাকে manually respond করতে হবে। |
+
+---
+
+## ⚠️ কখন Bot Off করবেন
+
+| Situation | Action |
+|-----------|--------|
+| Bot এ technical issues | OFF করুন, fix করুন, ON করুন |
+| Customers দের major announcement | Briefly OFF করুন |
+| Personal vacation (নিজে messages handle করছেন) | OFF করুন |
+| নতুন settings test করছেন | Temporarily OFF করুন |
+
+---
+
+## 🚨 Disable করার Warning
+
+Bot OFF করলে, দেখবেন:
+
+> ⚠️ **Warning:** Bot off করলে automatic responses হবে না। Customers আপনার manual reply এর wait করবে।
+
+Disable করার আগে manually respond করতে ready আছেন নিশ্চিত করুন!
+
+---
+
+## 📱 Bot Disabled Indicators
+
+Bot OFF থাকলে:
+- **Settings page** — Toggle OFF দেখায়
+- **Conversations page** — উপরে warning banner
+- **Conversation detail** — "Bot Disabled" badge
+
+---
+
+## 🔄 Per-Page Control
+
+Multiple Facebook pages connected থাকলে:
+- প্রতি page এর নিজের toggle আছে
+- একটা OFF করুন অন্যগুলো affect না করে
+- Multiple businesses manage করতে useful
+
+---
+
+## 💡 Best Practices
+
+1. **Bot বেশিক্ষণ OFF রাখবেন না** — Customers fast responses expect করে
+2. **Downtime communicate করুন** — Bot offline থাকলে page এ post করুন
+3. **Peak hours এ ON রাখুন** — Bot 24/7 কাজ করে, আপনাকে করতে হবে না
+4. **ON করার পর test করুন** — কাজ করছে নিশ্চিত করুন
+`
+      },
+      icon: '🔌'
+    },
+    {
+      id: 'facebook-pages',
+      slug: 'facebook-pages',
+      order: 4,
+      title: { en: 'Managing Facebook Pages', bn: 'Facebook Pages Manage করা' },
+      content: {
+        en: `# Managing Facebook Pages
+
+Connect, disconnect, and manage your Facebook business pages.
+
+## 📋 Viewing Connected Pages
+
+1. Go to **Settings**
+2. Scroll to **Connected Facebook Pages**
+3. See all your connected pages
+
+Each page shows:
+- **Page name** and profile picture
+- **Bot status** (ON/OFF toggle)
+- **Connected date**
+- **Disconnect** option
+
+---
+
+## ➕ Connecting a New Page
+
+### Steps
+1. Click **Connect Facebook Page**
+2. Facebook popup appears
+3. Log in if needed
+4. Select the page to connect
+5. Grant permissions
+6. Page appears in your list!
+
+### Requirements
+- Must be **admin** of the page
+- Page must be a **business page** (not personal)
+- All required permissions must be granted
+
+---
+
+## ➖ Disconnecting a Page
+
+### Steps
+1. Find the page in your list
+2. Click **Disconnect** button
+3. Confirm in the dialog
+
+### What Happens
+- Bot stops responding on that page
+- Conversations remain in your dashboard (history)
+- No new messages will come in
+- You can reconnect later
+
+---
+
+## 🔄 Reconnecting
+
+If you disconnected by mistake:
+1. Click **Connect Facebook Page**
+2. Select the same page
+3. Grant permissions again
+4. Page reconnects!
+
+Previous conversations and orders remain intact.
+
+---
+
+## 👥 Multiple Pages
+
+If you run multiple business pages:
+- Connect them all to one Autex AI account
+- Each page has separate:
+  - Products
+  - Conversations
+  - Orders
+  - Settings
+
+Switch between pages using the page selector (coming soon).
+
+---
+
+## 💡 Tips
+
+- **Use one page per business** — Don't mix different businesses
+- **Check permissions if issues arise** — Reconnect if needed
+- **Don't connect personal profile** — Only business pages work
+`,
+        bn: `# Facebook Pages Manage করা
+
+Facebook business pages connect, disconnect, আর manage করুন।
+
+## 📋 Connected Pages দেখা
+
+1. **Settings** এ যান
+2. **Connected Facebook Pages** এ scroll করুন
+3. আপনার সব connected pages দেখুন
+
+প্রতি page দেখায়:
+- **Page name** আর profile picture
+- **Bot status** (ON/OFF toggle)
+- **Connected date**
+- **Disconnect** option
+
+---
+
+## ➕ নতুন Page Connect করা
+
+### Steps
+1. **Connect Facebook Page** click করুন
+2. Facebook popup আসবে
+3. দরকার হলে login করুন
+4. Connect করতে চাওয়া page select করুন
+5. Permissions দিন
+6. Page আপনার list এ দেখাবে!
+
+### Requirements
+- Page এর **admin** হতে হবে
+- **Business page** হতে হবে (personal না)
+- সব required permissions দিতে হবে
+
+---
+
+## ➖ Page Disconnect করা
+
+### Steps
+1. List এ page খুঁজুন
+2. **Disconnect** button click করুন
+3. Dialog এ confirm করুন
+
+### কি হয়
+- Bot সেই page এ respond করা বন্ধ করে
+- Conversations dashboard এ থাকে (history)
+- নতুন messages আসবে না
+- পরে reconnect করতে পারবেন
+
+---
+
+## 🔄 Reconnect করা
+
+ভুলে disconnect করলে:
+1. **Connect Facebook Page** click করুন
+2. Same page select করুন
+3. আবার permissions দিন
+4. Page reconnect হয়!
+
+Previous conversations আর orders ঠিক থাকে।
+
+---
+
+## 👥 Multiple Pages
+
+Multiple business pages চালালে:
+- সব একই Autex AI account এ connect করুন
+- প্রতি page এর আলাদা:
+  - Products
+  - Conversations
+  - Orders
+  - Settings
+
+Pages এর মধ্যে switch করতে page selector use করুন (coming soon)।
+
+---
+
+## 💡 Tips
+
+- **প্রতি business এ এক page use করুন** — Different businesses mix করবেন না
+- **Issues হলে permissions check করুন** — দরকার হলে reconnect করুন
+- **Personal profile connect করবেন না** — শুধু business pages কাজ করে
 `
       }
     }

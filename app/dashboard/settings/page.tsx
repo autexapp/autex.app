@@ -187,26 +187,27 @@ export default function SettingsPage() {
     <>
       <TopBar title="Settings" />
 
-      <div className="p-4 lg:p-6 space-y-6">
+      <div className="p-4 lg:p-6 space-y-6 pb-24 lg:pb-6">
         <h2 className="text-2xl font-semibold">Settings</h2>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="bg-muted/50 w-full justify-start overflow-x-auto">
-            <TabsTrigger value="general" className="flex items-center gap-2">
+          {/* Responsive TabsList: scrollable on mobile, icon-only on xs */}
+          <TabsList className="bg-muted/50 w-full justify-start overflow-x-auto flex-nowrap scrollbar-hide">
+            <TabsTrigger value="general" className="flex items-center gap-2 min-w-fit px-3 sm:px-4">
               <User className="h-4 w-4" />
-              General
+              <span className="hidden sm:inline">General</span>
             </TabsTrigger>
-            <TabsTrigger value="facebook" className="flex items-center gap-2">
+            <TabsTrigger value="facebook" className="flex items-center gap-2 min-w-fit px-3 sm:px-4">
               <Facebook className="h-4 w-4" />
-              Facebook
+              <span className="hidden sm:inline">Facebook</span>
             </TabsTrigger>
-            <TabsTrigger value="notifications" className="flex items-center gap-2">
+            <TabsTrigger value="notifications" className="flex items-center gap-2 min-w-fit px-3 sm:px-4">
               <Bell className="h-4 w-4" />
-              Notifications
+              <span className="hidden sm:inline">Notifications</span>
             </TabsTrigger>
-            <TabsTrigger value="billing" className="flex items-center gap-2">
+            <TabsTrigger value="billing" className="flex items-center gap-2 min-w-fit px-3 sm:px-4">
               <CreditCard className="h-4 w-4" />
-              Billing
+              <span className="hidden sm:inline">Billing</span>
             </TabsTrigger>
           </TabsList>
 
@@ -694,8 +695,8 @@ function FacebookPagesSection() {
                 key={page.id}
                 className="p-4 rounded-lg border border-border bg-muted/30 space-y-4"
               >
-                {/* Page Info Row */}
-                <div className="flex items-center justify-between">
+                {/* Page Info Row - stacks on mobile */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <Avatar className="h-10 w-10">
                       <AvatarImage 
@@ -717,7 +718,7 @@ function FacebookPagesSection() {
                     variant="ghost"
                     size="sm"
                     onClick={() => handleDisconnectClick(page.id, page.page_name)}
-                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10 w-full sm:w-auto justify-center"
                   >
                     <Trash2 className="h-4 w-4 mr-2" />
                     Disconnect

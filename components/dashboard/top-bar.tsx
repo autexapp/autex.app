@@ -16,7 +16,7 @@ import {
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
+import { SubscriptionCard } from "@/components/dashboard/subscription-card"
 import { cn } from "@/lib/utils"
 import {
   Search,
@@ -91,6 +91,8 @@ function getInitials(name?: string, email?: string): string {
 
 export function TopBar({ title }: TopBarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
+  const [mobileSearchQuery, setMobileSearchQuery] = useState("")
   const [userData, setUserData] = useState<UserData | null>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const { needsReplyCount, pendingOrdersCount, loading: workspaceLoading } = useWorkspace()
@@ -263,8 +265,8 @@ export function TopBar({ title }: TopBarProps) {
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="w-72 p-0 border-r border-border/50 bg-background/95 backdrop-blur-xl">
-              {/* Logo */}
-              <div className="px-6 py-6 border-b border-border/50">
+              {/* Logo + Theme Toggle (matching desktop) */}
+              <div className="px-6 py-6 border-b border-border/50 flex items-center justify-between">
                 <Link 
                   href="/dashboard" 
                   onClick={() => setMobileMenuOpen(false)}
@@ -280,6 +282,7 @@ export function TopBar({ title }: TopBarProps) {
                   </div>
                   <span className="text-xl font-serif tracking-tight">Autex AI</span>
                 </Link>
+                <ThemeToggle />
               </div>
               {/* Navigation */}
               <nav className="flex-1 px-4 py-6 space-y-1">
@@ -303,29 +306,8 @@ export function TopBar({ title }: TopBarProps) {
                   )
                 })}
               </nav>
-              {/* Plan Usage */}
-              <div className="p-4 mx-4 mb-6 rounded-xl bg-gradient-to-br from-muted/50 to-muted/10 border border-white/5">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Starter Plan</span>
-                  <Badge variant="outline" className="text-[10px] h-5 border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/10">PRO</Badge>
-                </div>
-                <div className="mb-3 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Usage</span>
-                    <span className="font-mono font-medium">93%</span>
-                  </div>
-                  <Progress value={93} className="h-1.5 [&>div]:bg-amber-500 bg-amber-500/10" />
-                </div>
-                <Button variant="default" size="sm" className="w-full text-xs h-8 shadow-sm">
-                  Upgrade Plan
-                </Button>
-              </div>
-
-              {/* Theme Toggle Footer */}
-              <div className="p-4 border-t border-border/50 flex items-center justify-between">
-                <span className="text-sm font-medium text-muted-foreground">Theme</span>
-                <ThemeToggle />
-              </div>
+              {/* Subscription Status Card - Dynamic (same as desktop) */}
+              <SubscriptionCard />
             </SheetContent>
           </Sheet>
 
@@ -364,10 +346,40 @@ export function TopBar({ title }: TopBarProps) {
 
         {/* Right: Notifications + Profile */}
         <div className="flex items-center gap-3">
-          {/* Mobile Search Trigger */}
-          <Button variant="ghost" size="icon" className="md:hidden text-muted-foreground">
-            <Search className="h-5 w-5" />
-          </Button>
+          {/* Mobile Search */}
+          <Sheet open={mobileSearchOpen} onOpenChange={setMobileSearchOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="md:hidden text-muted-foreground">
+                <Search className="h-5 w-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="top" className="p-4 pt-10">
+              <div className="relative w-full">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  autoFocus
+                  placeholder={pathname.includes('/products') ? "Search products..." : "Search orders, customers..."}
+                  value={mobileSearchQuery}
+                  onChange={(e) => setMobileSearchQuery(e.target.value)}
+                  className="pl-10 h-12 text-base"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && mobileSearchQuery.trim()) {
+                      if (pathname.includes('/products')) {
+                        router.push(`/dashboard/products?search=${encodeURIComponent(mobileSearchQuery)}`)
+                      } else {
+                        router.push(`/dashboard/orders?search=${encodeURIComponent(mobileSearchQuery)}`)
+                      }
+                      setMobileSearchOpen(false)
+                      setMobileSearchQuery("")
+                    }
+                  }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground mt-2 text-center">
+                Press Enter to search
+              </p>
+            </SheetContent>
+          </Sheet>
 
           {/* Notifications */}
           <DropdownMenu>

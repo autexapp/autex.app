@@ -950,17 +950,17 @@ export default function AISetupPage() {
           </div>
         </div>
 
-        {/* Floating Action Bar */}
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-lg border-t border-zinc-200 dark:border-white/10 z-40 lg:pl-72">
-           <div className="max-w-[1600px] mx-auto flex items-center justify-between">
-              <p className="text-sm text-zinc-500 hidden sm:block">
+        {/* Floating Action Bar - positioned above mobile nav */}
+        <div className="fixed bottom-16 lg:bottom-0 left-0 right-0 p-4 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-lg border-t border-zinc-200 dark:border-white/10 z-40 lg:pl-72">
+           <div className="max-w-[1600px] mx-auto flex items-center justify-between gap-4">
+              <p className="text-sm text-zinc-500 hidden md:block flex-1">
                 {saving ? "Saving changes..." : "Unsaved changes are visible to customers immediately after saving."}
               </p>
               <Button 
                 onClick={handleSave} 
                 disabled={saving}
                 size="lg"
-                className="w-full sm:w-auto min-w-[150px] shadow-xl md:mr-8 bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+                className="w-full sm:w-auto min-w-[150px] shadow-xl bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
               >
                 {saving ? (
                   <>

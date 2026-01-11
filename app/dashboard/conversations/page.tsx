@@ -978,8 +978,8 @@ export default function ConversationsPage() {
                 )}
               </div>
 
-              {/* Chat Input - Floating Capsule (Fixed at bottom) */}
-              <div className="p-4 bg-gradient-to-t from-white via-white/80 to-transparent dark:from-black dark:via-black/80 dark:to-transparent absolute bottom-0 left-0 right-0 z-20">
+              {/* Chat Input - Floating Capsule (Fixed at bottom, above mobile nav) */}
+              <div className="p-4 bg-gradient-to-t from-white via-white/80 to-transparent dark:from-black dark:via-black/80 dark:to-transparent absolute bottom-16 lg:bottom-0 left-0 right-0 z-20">
                 <div className="max-w-3xl mx-auto bg-white/90 dark:bg-zinc-900/90 backdrop-blur-xl border border-zinc-200 dark:border-white/10 rounded-full p-2 shadow-2xl shadow-zinc-200/50 dark:shadow-black/50 flex items-center gap-2 relative">
                    <form onSubmit={handleSendMessage} className="flex-1 flex gap-2">
                     <Input

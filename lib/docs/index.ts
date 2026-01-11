@@ -5,6 +5,7 @@ import { conversationsSection } from './sections/03-conversations';
 import { ordersSection } from './sections/04-orders';
 import { aiFeaturesSection } from './sections/05-ai-features';
 import { settingsSection } from './sections/06-settings';
+import { faqSection } from './sections/07-faq';
 
 // Register all sections here
 export const docSections: DocSection[] = [
@@ -14,6 +15,7 @@ export const docSections: DocSection[] = [
   ordersSection,
   aiFeaturesSection,
   settingsSection,
+  faqSection,
 ].sort((a, b) => a.order - b.order);
 
 export function getSectionBySlug(slug: string): DocSection | undefined {
