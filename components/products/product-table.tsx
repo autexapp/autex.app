@@ -26,7 +26,6 @@ interface Product {
   price: number;
   stock_quantity: number;
   description?: string | null;
-  category?: string | null;
   image_urls?: string[];
   image_hash: string | null;
 }
@@ -53,7 +52,6 @@ export function ProductTable({ products, onEdit, onDelete }: ProductTableProps) 
           <TableRow className="border-b border-[#e5e5e5]">
             <TableHead className="w-[80px] text-[#171717] font-medium">Image</TableHead>
             <TableHead className="text-[#171717] font-medium">Name</TableHead>
-            <TableHead className="text-[#171717] font-medium">Category</TableHead>
             <TableHead className="text-right text-[#171717] font-medium">Price</TableHead>
             <TableHead className="text-right text-[#171717] font-medium">Stock</TableHead>
             <TableHead className="w-[70px]">Actions</TableHead>
@@ -79,15 +77,6 @@ export function ProductTable({ products, onEdit, onDelete }: ProductTableProps) 
                 )}
               </TableCell>
               <TableCell className="font-medium text-[#171717]">{product.name}</TableCell>
-              <TableCell>
-                {product.category ? (
-                  <Badge variant="outline" className="border-[#e5e5e5] text-[#171717]">
-                    {product.category}
-                  </Badge>
-                ) : (
-                  <span className="text-[#737373] text-sm">—</span>
-                )}
-              </TableCell>
               <TableCell className="text-right font-medium text-[#171717]">
                 ৳{product.price.toFixed(2)}
               </TableCell>

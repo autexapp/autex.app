@@ -1,80 +1,69 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Facebook, Loader2 } from "lucide-react"
+import { Facebook, ArrowRight } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { AuthLayout } from "@/components/ui/premium/auth-layout"
+import { GlassCard } from "@/components/ui/premium/glass-card"
+import { PremiumButton } from "@/components/ui/premium/premium-button"
+import { PremiumLoader } from "@/components/ui/premium/premium-loader"
+import { useWorkspace } from "@/lib/workspace-provider"
 
 export function RequireFacebookPage({ children }: { children: React.ReactNode }) {
-  const [loading, setLoading] = useState(true)
+  const { hasFacebookPage, loading: workspaceLoading } = useWorkspace()
   const [connecting, setConnecting] = useState(false)
-  const [hasPage, setHasPage] = useState(false)
-  const router = useRouter()
 
-  useEffect(() => {
-    checkPage()
-  }, [])
-
-  const checkPage = async () => {
-    try {
-      const response = await fetch('/api/facebook/pages')
-      if (response.ok) {
-        const data = await response.json()
-        if (data.pages && data.pages.length > 0) {
-          setHasPage(true)
-        }
-      }
-    } catch (error) {
-      console.error('Failed to check Facebook page:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  if (loading) {
+  if (workspaceLoading) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-4rem)]">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="relative min-h-[400px] w-full flex-1">
+        <PremiumLoader />
       </div>
     )
   }
 
-  if (hasPage) {
+  if (hasFacebookPage) {
     return <>{children}</>
   }
 
   return (
-    <div className="flex items-center justify-center h-[calc(100vh-4rem)] p-4">
-      <Card className="max-w-md w-full text-center border-dashed">
-        <CardHeader>
-          <div className="mx-auto bg-blue-100 dark:bg-blue-900/30 p-4 rounded-full mb-4">
-            <Facebook className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+    <AuthLayout className="h-[calc(100vh-4rem)]">
+      <div className="w-full max-w-md">
+        <GlassCard>
+          <div className="flex flex-col items-center text-center space-y-6">
+            {/* Icon */}
+            <div className="relative">
+              <div className="absolute inset-0 rounded-full bg-blue-500/20 blur-xl animate-pulse" />
+              <div className="relative h-16 w-16 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg border border-white/10">
+                <Facebook className="h-8 w-8 text-white" />
+              </div>
+            </div>
+
+            {/* Typography */}
+            <div className="space-y-2">
+              <h1 className="font-serif text-3xl font-medium tracking-tight text-white/90">
+                Connect Your Facebook Page
+              </h1>
+              <p className="text-sm text-white/50 leading-relaxed max-w-[300px] mx-auto">
+                Connect your business page to unlock powerful AI automation, order management, and analytics.
+              </p>
+            </div>
+
+            {/* Action Button */}
+            <PremiumButton
+              loading={connecting}
+              onClick={() => {
+                setConnecting(true)
+                window.location.href = '/auth/facebook/connect'
+              }}
+              className="w-full bg-white hover:bg-white/90 text-zinc-950 border-none shadow-[0_0_20px_rgba(255,255,255,0.15)] hover:shadow-[0_0_30px_rgba(255,255,255,0.25)]"
+            >
+              <Facebook className="h-4 w-4 text-[#1877F2] transition-transform duration-300 group-hover/btn:scale-110" />
+              <span className="font-semibold tracking-wide">Connect Page</span>
+              <ArrowRight className="h-4 w-4 text-zinc-400 transition-transform duration-300 group-hover/btn:translate-x-1" />
+            </PremiumButton>
           </div>
-          <CardTitle>Connect Your Facebook Page</CardTitle>
-          <CardDescription>
-            You need to connect a Facebook page to access this feature. 
-            Connect your page to start managing orders, products, and conversations.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button 
-            className="w-full" 
-            onClick={() => {
-              setConnecting(true)
-              window.location.href = '/auth/facebook/connect'
-            }}
-            disabled={connecting}
-          >
-            {connecting ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Facebook className="mr-2 h-4 w-4" />
-            )}
-            {connecting ? 'Connecting...' : 'Connect Page'}
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
+        </GlassCard>
+      </div>
+    </AuthLayout>
   )
 }

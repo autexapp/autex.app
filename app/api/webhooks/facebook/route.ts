@@ -657,6 +657,36 @@ async function processMessagingEvent(
     }
 
     // ========================================
+    // CHECK SUBSCRIPTION STATUS
+    // ========================================
+    
+    const { checkBotPermission } = await import('@/lib/subscription/utils');
+    const botPermission = await checkBotPermission(fbPage.workspace_id, supabase);
+    
+    if (!botPermission.allowed) {
+      console.log(`🛑 Bot blocked by subscription: ${botPermission.reason}`);
+      
+      // Still save the customer message to database
+      await supabase.from('messages').insert({
+        conversation_id: conversation.id,
+        sender: 'customer',
+        sender_type: 'customer',
+        message_text: messageText,
+        message_type: message.attachments ? 'attachment' : 'text',
+        attachments: message.attachments || null,
+      });
+      
+      // Update last_message_at
+      await supabase
+        .from('conversations')
+        .update({ last_message_at: new Date(timestamp).toISOString() })
+        .eq('id', conversation.id);
+      
+      console.log('✅ Customer message saved, but bot blocked due to subscription status');
+      return;
+    }
+
+    // ========================================
     // CHECK GLOBAL BOT TOGGLE
     // ========================================
     

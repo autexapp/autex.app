@@ -1,0 +1,118 @@
+/**
+ * useSubscription Hook
+ * 
+ * React hook for fetching and managing subscription state.
+ * Used by subscription card, banner, and other UI components.
+ */
+
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
+import { SUBSCRIPTION_PLANS, CONTACT_NUMBERS, type SubscriptionPlan } from '@/lib/subscription/utils'
+
+export interface SubscriptionState {
+  status: 'trial' | 'active' | 'expired'
+  plan: SubscriptionPlan | null
+  planName: string | null
+  planPrice: number | null
+  daysRemaining: number
+  expiresAt: string | null
+  expiresAtFormatted: string | null
+  trialEndsAt: string | null
+  canUseBot: boolean
+  isPaused: boolean
+  pausedReason: string | null
+  statusText: string
+  lastPaymentDate: string | null
+  totalPaid: number
+}
+
+export interface ContactInfo {
+  whatsapp: string
+  bkash: string
+  whatsappLink: string
+}
+
+export interface UseSubscriptionReturn {
+  subscription: SubscriptionState | null
+  contact: ContactInfo | null
+  plans: typeof SUBSCRIPTION_PLANS
+  workspaceName: string | null
+  isLoading: boolean
+  error: string | null
+  refetch: () => Promise<void>
+}
+
+export function useSubscription(): UseSubscriptionReturn {
+  const [subscription, setSubscription] = useState<SubscriptionState | null>(null)
+  const [contact, setContact] = useState<ContactInfo | null>(null)
+  const [workspaceName, setWorkspaceName] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchSubscription = useCallback(async () => {
+    try {
+      setIsLoading(true)
+      setError(null)
+
+      const response = await fetch('/api/subscription/status')
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          setError('Not authenticated')
+          return
+        }
+        throw new Error('Failed to fetch subscription status')
+      }
+
+      const data = await response.json()
+
+      if (data.success) {
+        setSubscription(data.subscription)
+        setContact(data.contact)
+        setWorkspaceName(data.workspaceName)
+      } else {
+        setError(data.error || 'Unknown error')
+      }
+    } catch (err) {
+      console.error('Error fetching subscription:', err)
+      setError(err instanceof Error ? err.message : 'Unknown error')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchSubscription()
+  }, [fetchSubscription])
+
+  return {
+    subscription,
+    contact,
+    plans: SUBSCRIPTION_PLANS,
+    workspaceName,
+    isLoading,
+    error,
+    refetch: fetchSubscription,
+  }
+}
+
+/**
+ * Helper to check if user has active subscription
+ */
+export function useCanUseBot(): boolean {
+  const { subscription, isLoading } = useSubscription()
+  
+  if (isLoading) return true // Optimistic - don't block while loading
+  return subscription?.canUseBot ?? false
+}
+
+/**
+ * Helper to check if subscription is in expired state
+ */
+export function useIsExpired(): boolean {
+  const { subscription, isLoading } = useSubscription()
+  
+  if (isLoading) return false
+  return subscription?.status === 'expired' || subscription?.canUseBot === false
+}

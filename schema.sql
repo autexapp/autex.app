@@ -8,8 +8,10 @@ CREATE TABLE public.api_usage (
   cost numeric NOT NULL,
   image_hash text,
   created_at timestamp with time zone DEFAULT now(),
+  conversation_id uuid,
   CONSTRAINT api_usage_pkey PRIMARY KEY (id),
-  CONSTRAINT api_usage_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id)
+  CONSTRAINT api_usage_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id),
+  CONSTRAINT api_usage_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id)
 );
 CREATE TABLE public.conversations (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -23,10 +25,14 @@ CREATE TABLE public.conversations (
   created_at timestamp with time zone DEFAULT now(),
   is_test boolean DEFAULT false,
   customer_profile_pic_url text,
-  control_mode text DEFAULT 'bot'::text CHECK (control_mode IN ('bot', 'manual', 'hybrid')),
+  control_mode text DEFAULT 'bot'::text CHECK (control_mode = ANY (ARRAY['bot'::text, 'manual'::text, 'hybrid'::text])),
   last_manual_reply_at timestamp with time zone,
   last_manual_reply_by text,
   bot_pause_until timestamp with time zone,
+  outcome text,
+  needs_manual_response boolean DEFAULT false,
+  manual_flag_reason text,
+  manual_flagged_at timestamp with time zone,
   CONSTRAINT conversations_pkey PRIMARY KEY (id),
   CONSTRAINT conversations_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id),
   CONSTRAINT conversations_fb_page_id_fkey FOREIGN KEY (fb_page_id) REFERENCES public.facebook_pages(id)
@@ -57,11 +63,11 @@ CREATE TABLE public.messages (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   conversation_id uuid NOT NULL,
   sender text NOT NULL,
-  sender_type text DEFAULT 'customer'::text CHECK (sender_type IN ('customer', 'bot', 'owner')),
   message_text text,
   message_type text,
   attachments jsonb,
   created_at timestamp with time zone DEFAULT now(),
+  sender_type text DEFAULT 'customer'::text CHECK (sender_type = ANY (ARRAY['customer'::text, 'bot'::text, 'owner'::text])),
   CONSTRAINT messages_pkey PRIMARY KEY (id),
   CONSTRAINT messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id)
 );
@@ -113,6 +119,21 @@ CREATE TABLE public.orders (
   CONSTRAINT orders_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id),
   CONSTRAINT orders_fb_page_id_fkey FOREIGN KEY (fb_page_id) REFERENCES public.facebook_pages(id)
 );
+CREATE TABLE public.payment_history (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  workspace_id uuid NOT NULL,
+  amount numeric NOT NULL,
+  payment_method text NOT NULL DEFAULT 'bkash'::text,
+  transaction_id text,
+  payment_proof_url text,
+  plan_activated text NOT NULL,
+  duration_days integer NOT NULL DEFAULT 30,
+  notes text,
+  activated_by text,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT payment_history_pkey PRIMARY KEY (id),
+  CONSTRAINT payment_history_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id)
+);
 CREATE TABLE public.pre_registrations (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   full_name text NOT NULL,
@@ -128,7 +149,6 @@ CREATE TABLE public.products (
   name text NOT NULL,
   price numeric NOT NULL,
   description text,
-  category text,
   variations jsonb,
   stock_quantity integer DEFAULT 0,
   image_urls ARRAY,
@@ -142,8 +162,8 @@ CREATE TABLE public.products (
   colors ARRAY DEFAULT '{}'::text[],
   sizes ARRAY DEFAULT '{}'::text[],
   size_stock jsonb DEFAULT '[]'::jsonb,
-  variant_stock jsonb DEFAULT '[]'::jsonb,
   requires_size_selection boolean DEFAULT true,
+  variant_stock jsonb DEFAULT '[]'::jsonb,
   CONSTRAINT products_pkey PRIMARY KEY (id),
   CONSTRAINT products_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id)
 );
@@ -234,8 +254,18 @@ CREATE TABLE public.workspaces (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   owner_id uuid NOT NULL,
   name text NOT NULL,
-  subscription_status text DEFAULT 'free_trial'::text,
+  subscription_status text DEFAULT 'trial'::text CHECK (subscription_status = ANY (ARRAY['trial'::text, 'active'::text, 'expired'::text])),
   created_at timestamp with time zone DEFAULT now(),
+  subscription_plan text,
+  trial_ends_at timestamp with time zone,
+  subscription_expires_at timestamp with time zone,
+  admin_paused boolean DEFAULT false,
+  admin_paused_at timestamp with time zone,
+  admin_paused_reason text,
+  last_payment_date timestamp with time zone,
+  last_payment_amount numeric,
+  last_payment_method text,
+  total_paid numeric DEFAULT 0,
   CONSTRAINT workspaces_pkey PRIMARY KEY (id),
   CONSTRAINT workspaces_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.users(id)
 );

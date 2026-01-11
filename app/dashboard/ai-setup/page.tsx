@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
+import { PremiumLoader } from "@/components/ui/premium/premium-loader"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -29,6 +30,7 @@ import {
   Plus,
   ExternalLink,
   AlertTriangle,
+  Sparkles,
 } from "lucide-react"
 import { TestChatWidget } from "@/components/chat/test-chat-widget"
 import {
@@ -44,7 +46,10 @@ import {
 } from "@/components/ui/alert-dialog"
 import { RequireFacebookPage } from "@/components/dashboard/require-facebook-page"
 
-import { AISetupSkeleton } from "@/components/skeletons/ai-setup-skeleton"
+import { SmartCard } from "@/components/ui/premium/smart-card"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+import { cn } from "@/lib/utils"
 
 export default function AISetupPage() {
   // State for all settings
@@ -284,699 +289,692 @@ export default function AISetupPage() {
   }
 
   if (loading) {
-    return <AISetupSkeleton />
+    return <PremiumLoader />
   }
 
   return (
     <RequireFacebookPage>
       <TopBar title="AI Setup" />
 
-      <div className="p-4 lg:p-6 space-y-6">
-        {/* Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-semibold flex items-center gap-2">
-              <Bot className="h-6 w-6" />
-              AI Assistant Settings
+      <div className="max-w-[1800px] mx-auto p-4 lg:p-8 space-y-8 pb-32">
+        {/* Header Section */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-1">
+            <h2 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-white flex items-center gap-3">
+              <Bot className="h-8 w-8 text-black dark:text-white" />
+              AI Configuration
             </h2>
-            <p className="text-muted-foreground mt-1">Customize how your bot talks to customers</p>
+            <p className="text-zinc-500 dark:text-zinc-400 text-lg">
+              Customize your digital assistant's personality and operational logic.
+            </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-3">
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" className="text-zinc-500 hover:text-red-600 dark:text-zinc-400 dark:hover:text-red-400">
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Reset Defaults
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Reset all settings?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will revert your AI settings to the recommended defaults. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleReset} className="bg-red-600 hover:bg-red-700">
+                    Yes, Reset
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
             <Dialog>
               <DialogTrigger asChild>
-                <Button variant="outline">
+                <Button variant="outline" className="border-zinc-200 dark:border-white/10 dark:bg-white/5 dark:text-white">
                   <Eye className="h-4 w-4 mr-2" />
                   Preview Bot
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl h-[80vh] flex flex-col p-0 gap-0 overflow-hidden">
-                {/* Header is now part of the widget or we can keep it separate, 
-                    but since widget has its own header, let's remove the dialog header 
-                    or simplify it. The widget has a header, so let's just render the widget. 
-                    Actually, the widget header is nice. Let's remove the DialogHeader here 
-                    to avoid double headers or keep it if we remove widget header. 
-                    The widget header has "Clear" button. Let's keep widget header.
-                */}
+              <DialogContent className="max-w-2xl h-[80vh] flex flex-col p-0 gap-0 overflow-hidden bg-zinc-50 dark:bg-black border-zinc-200 dark:border-white/10">
                 <TestChatWidget />
               </DialogContent>
             </Dialog>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Bot Personality */}
-          <Card className="bg-card border border-border shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <MessageSquare className="h-4 w-4" />
-                Bot Personality
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="business-name">Business Name</Label>
-                <Input 
-                  id="business-name" 
-                  value={businessName}
-                  onChange={(e) => setBusinessName(e.target.value)}
-                  className="mt-1.5" 
-                />
-                <p className="text-xs text-muted-foreground mt-1">Shown to customers in messages</p>
+        {/* Main Masonry Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          
+          {/* LEFT COLUMN: Identity & Operations (7/12) */}
+          <div className="lg:col-span-7 space-y-8">
+            
+            {/* Identity Card */}
+            <SmartCard variant="static" className="p-6 md:p-8 space-y-8">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="h-10 w-10 rounded-xl bg-orange-100 dark:bg-orange-500/20 flex items-center justify-center">
+                  <Bot className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-zinc-900 dark:text-white">Identity & Voice</h3>
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">Define who your bot is and how it speaks.</p>
+                </div>
               </div>
-              <div>
-                <Label htmlFor="greeting">Greeting Message</Label>
-                <Textarea
-                  id="greeting"
-                  className="mt-1.5"
-                  rows={4}
-                  value={greeting}
-                  onChange={(e) => setGreeting(e.target.value)}
-                />
-              </div>
-            </CardContent>
-          </Card>
 
-          { /* Order Collection Style */}
-          <Card className="bg-card border border-border shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-base font-semibold">Order Collection Style</CardTitle>
-              <CardDescription>
-                Choose how the bot collects customer information during checkout
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <RadioGroup value={orderCollectionStyle} onValueChange={(value) => setOrderCollectionStyle(value as 'conversational' | 'quick_form')}>
-                <div className="flex items-start space-x-3 space-y-0">
-                  <RadioGroupItem value="quick_form" id="quick_form" />
-                  <div className="space-y-1">
-                    <Label htmlFor="quick_form" className="font-medium">
-                      Quick Form (Default)
-                    </Label>
-                    <p className="text-sm text-muted-foreground">
-                      Ask for all information in a single message. Faster checkout for customers.
-                    </p>
-                  </div>
+              <div className="grid gap-6">
+                {/* Business Name */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Business Name</Label>
+                  <Input 
+                    value={businessName}
+                    onChange={(e) => setBusinessName(e.target.value)}
+                    className="bg-zinc-50 border-zinc-200 focus:ring-black dark:bg-white/5 dark:border-white/10 dark:focus:ring-white h-11"
+                    placeholder="e.g. Code and Cortex Fashion"
+                  />
+                  <p className="text-xs text-zinc-400">This name appears in the bot's introduction.</p>
                 </div>
-                <div className="flex items-start space-x-3 space-y-0">
-                  <RadioGroupItem value="conversational" id="conversational" />
-                  <div className="space-y-1">
-                    <Label htmlFor="conversational" className="font-medium">
-                      Conversational Flow
-                    </Label>
-                    <p className="text-sm text-muted-foreground">
-                      Ask for name, phone, and address in separate, sequential steps. More human-like interaction.
-                    </p>
-                  </div>
+
+                {/* Greeting */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Greeting Message</Label>
+                  <Textarea
+                    value={greeting}
+                    onChange={(e) => setGreeting(e.target.value)}
+                    rows={4}
+                    className="bg-zinc-50 border-zinc-200 focus:ring-black dark:bg-white/5 dark:border-white/10 dark:focus:ring-white resize-none"
+                  />
                 </div>
-              </RadioGroup>
 
-              {orderCollectionStyle === 'quick_form' && (
-                <div className="space-y-4 pt-2 border-t border-border mt-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="quick_form_prompt">Quick Form Prompt Message</Label>
-                    <Textarea
-                      id="quick_form_prompt"
-                      value={quickFormPrompt}
-                      onChange={(e) => setQuickFormPrompt(e.target.value)}
-                      placeholder="Message asking for name, phone, and address..."
-                      rows={6}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      This message is shown when customer confirms they want to order the product
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="quick_form_error">Quick Form Error Message</Label>
-                    <Textarea
-                      id="quick_form_error"
-                      value={quickFormError}
-                      onChange={(e) => setQuickFormError(e.target.value)}
-                      placeholder="Error message when parsing fails..."
-                      rows={8}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Shown when the bot cannot parse the customer's information. Include format examples.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {orderCollectionStyle === 'conversational' && (
-                <div className="space-y-4 pt-2 border-t border-border mt-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="product-confirm">Product Confirmation (Ask for Name)</Label>
-                    <Textarea
-                      id="product-confirm"
-                      rows={3}
-                      value={fastLaneMessages.product_confirm}
-                      onChange={(e) => setFastLaneMessages({...fastLaneMessages, product_confirm: e.target.value})}
-                      placeholder="Message when user confirms product..."
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Shown when user says YES. Should ask for their name.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="name-collected">Name Collected (Ask for Phone)</Label>
-                    <Textarea
-                      id="name-collected"
-                      rows={3}
-                      value={fastLaneMessages.name_collected}
-                      onChange={(e) => setFastLaneMessages({...fastLaneMessages, name_collected: e.target.value})}
-                      placeholder="Message after collecting name..."
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Shown after user gives name. Should ask for phone number. Use {"{name}"}.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="phone-collected">Phone Collected (Ask for Address)</Label>
-                    <Textarea
-                      id="phone-collected"
-                      rows={3}
-                      value={fastLaneMessages.phone_collected}
-                      onChange={(e) => setFastLaneMessages({...fastLaneMessages, phone_collected: e.target.value})}
-                      placeholder="Message after collecting phone..."
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Shown after user gives phone. Should ask for delivery address.
-                    </p>
+                {/* Combined Settings Row */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
+                  {/* Tone Selector */}
+                  <div className="space-y-3">
+                    <Label className="text-sm font-semibold">Conversation Tone</Label>
+                    <RadioGroup value={tone} onValueChange={setTone} className="grid grid-cols-1 gap-2">
+                       {['friendly', 'professional', 'casual'].map((t) => (
+                         <div key={t} className={cn(
+                           "relative flex items-center space-x-3 rounded-lg border p-3 cursor-pointer transition-all",
+                           tone === t 
+                             ? "border-black bg-zinc-50 dark:border-white dark:bg-white/5" 
+                             : "border-zinc-200 hover:border-zinc-300 dark:border-white/10 dark:hover:border-white/20"
+                         )}
+                         onClick={() => setTone(t)}
+                         >
+                           <RadioGroupItem value={t} id={t} />
+                           <div className="flex-1">
+                             <Label htmlFor={t} className="font-semibold capitalize cursor-pointer">{t}</Label>
+                             <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 line-clamp-1">
+                               {toneExamples[t as keyof typeof toneExamples]}
+                             </p>
+                           </div>
+                         </div>
+                       ))}
+                    </RadioGroup>
                   </div>
                   
+                  {/* Language + Confidence */}
+                  <div className="space-y-6">
+                    <div className="space-y-4">
+                      <div className="flex justify-between">
+                         <Label className="font-semibold">Language Mix</Label>
+                         <span className="text-xs font-mono bg-zinc-100 dark:bg-white/10 px-2 py-0.5 rounded">
+                           {bengaliPercent[0]}% Bengali
+                         </span>
+                      </div>
+                      <Slider
+                        value={bengaliPercent}
+                        onValueChange={setBengaliPercent}
+                        max={100}
+                        step={5}
+                        className="py-2"
+                      />
+                      <div className="flex justify-between text-xs text-zinc-400">
+                        <span>Mostly English</span>
+                        <span>Minglish</span>
+                        <span>Pure Bengali</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="flex justify-between">
+                         <Label className="font-semibold">AI Confidence Threshold</Label>
+                         <span className="text-xs font-mono bg-zinc-100 dark:bg-white/10 px-2 py-0.5 rounded">
+                           {confidence[0]}%
+                         </span>
+                      </div>
+                      <Slider
+                        value={confidence}
+                        onValueChange={setConfidence}
+                        max={100}
+                        step={5}
+                        className="py-2"
+                      />
+                      <p className="text-xs text-zinc-400">
+                        Minimum confidence required before the AI answers automatically.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </SmartCard>
+
+            {/* Operations Card */}
+            <SmartCard variant="static" className="p-6 md:p-8 space-y-8">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="h-10 w-10 rounded-xl bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center">
+                  <Settings className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-zinc-900 dark:text-white">Operational Logic</h3>
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">How the bot handles orders and flows.</p>
+                </div>
+              </div>
+
+               {/* Collection Style - Visually Enhanced */}
+               <div className="space-y-4">
+                 <Label className="text-sm font-semibold">Order Collection Style</Label>
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div 
+                     className={cn(
+                       "border-2 rounded-xl p-4 cursor-pointer transition-all relative overflow-hidden",
+                       orderCollectionStyle === 'quick_form'
+                         ? "border-blue-600 bg-blue-50/50 dark:border-blue-500 dark:bg-blue-500/10"
+                         : "border-zinc-200 hover:border-zinc-300 dark:border-white/10 dark:hover:border-white/20"
+                     )}
+                     onClick={() => setOrderCollectionStyle('quick_form')}
+                   >
+                     <div className="flex justify-between items-start mb-2">
+                       <span className="font-bold text-zinc-900 dark:text-white">️⚡ Quick Form</span>
+                       {orderCollectionStyle === 'quick_form' && <div className="h-3 w-3 bg-blue-600 rounded-full" />}
+                     </div>
+                     <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                       Asks for all details (Name, Phone, Address) in a single message.
+                       <br/><span className="font-semibold text-blue-600 dark:text-blue-400">Best for speed.</span>
+                     </p>
+                   </div>
+
+                   <div 
+                     className={cn(
+                       "border-2 rounded-xl p-4 cursor-pointer transition-all relative overflow-hidden",
+                       orderCollectionStyle === 'conversational'
+                         ? "border-blue-600 bg-blue-50/50 dark:border-blue-500 dark:bg-blue-500/10"
+                         : "border-zinc-200 hover:border-zinc-300 dark:border-white/10 dark:hover:border-white/20"
+                     )}
+                     onClick={() => setOrderCollectionStyle('conversational')}
+                   >
+                     <div className="flex justify-between items-start mb-2">
+                       <span className="font-bold text-zinc-900 dark:text-white">💬 Conversational</span>
+                        {orderCollectionStyle === 'conversational' && <div className="h-3 w-3 bg-blue-600 rounded-full" />}
+                     </div>
+                     <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                       Collects details step-by-step. "What is your name?", "Then phone?"...
+                       <br/><span className="font-semibold text-blue-600 dark:text-blue-400">Best for engagement.</span>
+                     </p>
+                   </div>
+                 </div>
+               </div>
+
+               {/* Conditional Inputs based on Selection */}
+               <div className="space-y-4 pt-2">
+                 {orderCollectionStyle === 'quick_form' && (
+                   <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                     <div className="space-y-2">
+                       <Label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Quick Form Prompt Message</Label>
+                       <Textarea
+                         value={quickFormPrompt}
+                         onChange={(e) => setQuickFormPrompt(e.target.value)}
+                         placeholder="Message asking for name, phone, and address..."
+                         rows={4}
+                         className="bg-zinc-50 border-zinc-200 focus:ring-black dark:bg-white/5 dark:border-white/10 dark:focus:ring-white resize-none"
+                       />
+                       <p className="text-xs text-zinc-400">Shown when customer confirms they want to order.</p>
+                     </div>
+
+                     <div className="space-y-2">
+                       <Label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Quick Form Error Message</Label>
+                       <Textarea
+                         value={quickFormError}
+                         onChange={(e) => setQuickFormError(e.target.value)}
+                         placeholder="Error message when parsing fails..."
+                         rows={4}
+                         className="bg-zinc-50 border-zinc-200 focus:ring-black dark:bg-white/5 dark:border-white/10 dark:focus:ring-white resize-none"
+                       />
+                       <p className="text-xs text-zinc-400">Shown when the bot cannot parse the customer's info.</p>
+                     </div>
+                   </div>
+                 )}
+
+                 {orderCollectionStyle === 'conversational' && (
+                   <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                     <div className="space-y-2">
+                       <Label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Product Confirmation (Ask for Name)</Label>
+                       <Textarea
+                         rows={3}
+                         value={fastLaneMessages.product_confirm}
+                         onChange={(e) => setFastLaneMessages({...fastLaneMessages, product_confirm: e.target.value})}
+                         placeholder="Message when user confirms product..."
+                         className="bg-zinc-50 border-zinc-200 focus:ring-black dark:bg-white/5 dark:border-white/10 dark:focus:ring-white resize-none"
+                       />
+                       <p className="text-xs text-zinc-400">Step 1: Ask for their name.</p>
+                     </div>
+
+                     <div className="space-y-2">
+                       <Label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Name Collected (Ask for Phone)</Label>
+                       <Textarea
+                         rows={3}
+                         value={fastLaneMessages.name_collected}
+                         onChange={(e) => setFastLaneMessages({...fastLaneMessages, name_collected: e.target.value})}
+                         placeholder="Message after collecting name..."
+                         className="bg-zinc-50 border-zinc-200 focus:ring-black dark:bg-white/5 dark:border-white/10 dark:focus:ring-white resize-none"
+                       />
+                       <p className="text-xs text-zinc-400">Step 2: Ask for phone number. Use {"{name}"}.</p>
+                     </div>
+
+                     <div className="space-y-2">
+                       <Label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Phone Collected (Ask for Address)</Label>
+                       <Textarea
+                         rows={3}
+                         value={fastLaneMessages.phone_collected}
+                         onChange={(e) => setFastLaneMessages({...fastLaneMessages, phone_collected: e.target.value})}
+                         placeholder="Message after collecting phone..."
+                         className="bg-zinc-50 border-zinc-200 focus:ring-black dark:bg-white/5 dark:border-white/10 dark:focus:ring-white resize-none"
+                       />
+                       <p className="text-xs text-zinc-400">Step 3: Ask for delivery address.</p>
+                     </div>
+                     
+                     <div className="space-y-2">
+                       <Label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Product Decline Message</Label>
+                       <Textarea
+                         rows={2}
+                         value={fastLaneMessages.product_decline}
+                         onChange={(e) => setFastLaneMessages({...fastLaneMessages, product_decline: e.target.value})}
+                         placeholder="Message when user declines product..."
+                         className="bg-zinc-50 border-zinc-200 focus:ring-black dark:bg-white/5 dark:border-white/10 dark:focus:ring-white resize-none"
+                       />
+                     </div>
+                   </div>
+                 )}
+               </div>
+
+               <Separator className="bg-zinc-100 dark:bg-white/10" />
+
+               {/* Behavior Switches */}
+               <div className="space-y-4">
+                 <Label className="text-sm font-semibold mb-2 block">Behavior Rules</Label>
+                 <div className="relative">
+                   {/* Coming Soon Overlay */}
+                   <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/50 dark:bg-black/50 backdrop-blur-[1px] rounded-lg">
+                     <Badge variant="secondary" className="bg-zinc-900 text-white dark:bg-white dark:text-black px-4 py-1.5 h-auto text-xs font-bold gap-2 shadow-xl">
+                       <Sparkles className="h-3 w-3" />
+                       Coming Soon
+                     </Badge>
+                   </div>
+                   
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 opacity-40 pointer-events-none">
+                     {[
+                       { label: "Handle Multi-Product Orders", desc: "Allow bot to process multiple items at once" },
+                       { label: "Ask for Size/Color", desc: "Always confirm variants before ordering" },
+                       { label: "Check Stock Levels", desc: "Verify inventory before confirming" },
+                       { label: "Suggest Alternatives", desc: "Offer similar items if OOS" },
+                       { label: "Send Order Confirmation", desc: "Send summary message after order" },
+                       { label: "Image Confirmation", desc: "Show product image in summary" },
+                     ].map((item, i) => (
+                       <div key={i} className="flex items-center justify-between p-3 rounded-lg border border-zinc-100 dark:border-white/5 bg-zinc-50/50 dark:bg-white/5">
+                         <div className="space-y-0.5">
+                           <Label className="text-sm font-medium">{item.label}</Label>
+                           <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{item.desc}</p>
+                         </div>
+                         <Switch checked={false} disabled />
+                       </div>
+                     ))}
+                  </div>
+                 </div>
+
+                 <Separator className="bg-zinc-100 dark:bg-white/10" />
+
+                 {/* Out of Stock Message */}
+                 <div className="space-y-4 pt-2">
+                    <div className="space-y-2">
+                      <Label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Out of Stock Message</Label>
+                      <Textarea
+                        value={outOfStockMessage}
+                        onChange={(e) => setOutOfStockMessage(e.target.value)}
+                        rows={3}
+                        placeholder="Message when product is out of stock..."
+                        className="bg-zinc-50 border-zinc-200 focus:ring-black dark:bg-white/5 dark:border-white/10 dark:focus:ring-white resize-none"
+                      />
+                      <p className="text-xs text-zinc-400">
+                        Use {"{productName}"} to include the product name.
+                      </p>
+                  </div>
+               </div>
+               </div>
+            </SmartCard>
+
+           {/* Fast Lane Messages Card */}
+           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
+             <SmartCard variant="static" className="p-6 md:p-8 space-y-8">
+               <div className="flex items-center gap-3 mb-6">
+                 <div className="h-10 w-10 rounded-xl bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center">
+                   <MessageSquare className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                 </div>
+                 <div>
+                   <h3 className="text-xl font-bold text-zinc-900 dark:text-white">Fast Lane Messages</h3>
+                   <p className="text-sm text-zinc-500 dark:text-zinc-400">Customize bot responses for common interactions. Use {"{name}"} as placeholders.</p>
+                 </div>
+               </div>
+
+               <div className="space-y-6">
+                 {/* Order Confirmed */}
+                 <div className="space-y-2">
+                   <div className="flex items-center gap-2">
+                     <div className="h-2 w-2 rounded-full bg-green-500" />
+                     <Label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Order Confirmed</Label>
+                   </div>
+                   <Textarea
+                     rows={3}
+                     value={fastLaneMessages.order_confirmed}
+                     onChange={(e) => setFastLaneMessages({...fastLaneMessages, order_confirmed: e.target.value})}
+                     className="bg-zinc-50 border-zinc-200 focus:ring-black dark:bg-white/5 dark:border-white/10 dark:focus:ring-white resize-none font-mono text-sm"
+                   />
+                   <p className="text-xs text-zinc-400">Final success message after order confirmation. Use {"{name}"} as placeholder.</p>
+                 </div>
+
+                 {/* Order Cancelled */}
+                 <div className="space-y-2">
+                   <div className="flex items-center gap-2">
+                     <div className="h-2 w-2 rounded-full bg-orange-500" />
+                     <Label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Order Cancelled</Label>
+                   </div>
+                   <Textarea
+                     rows={2}
+                     value={fastLaneMessages.order_cancelled}
+                     onChange={(e) => setFastLaneMessages({...fastLaneMessages, order_cancelled: e.target.value})}
+                     className="bg-zinc-50 border-zinc-200 focus:ring-black dark:bg-white/5 dark:border-white/10 dark:focus:ring-white resize-none font-mono text-sm"
+                   />
+                   <p className="text-xs text-zinc-400">Shown when user cancels the order.</p>
+                 </div>
+
+                 <Separator className="bg-zinc-100 dark:bg-white/10" />
+
+                 {/* Payment Instructions */}
+                 <div className="space-y-2">
+                   <div className="flex items-center gap-2">
+                     <div className="h-2 w-2 rounded-full bg-green-500" />
+                     <Label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Payment Instructions</Label>
+                   </div>
+                   <Textarea
+                     rows={5}
+                     value={fastLaneMessages.paymentInstructions}
+                     onChange={(e) => setFastLaneMessages({...fastLaneMessages, paymentInstructions: e.target.value})}
+                     className="bg-zinc-50 border-zinc-200 focus:ring-black dark:bg-white/5 dark:border-white/10 dark:focus:ring-white resize-none font-mono text-sm"
+                   />
+                   <div className="flex items-center gap-2 text-xs text-zinc-400 bg-zinc-50 dark:bg-white/5 p-2 rounded border border-zinc-100 dark:border-white/5">
+                      <AlertTriangle className="h-3 w-3 text-amber-500" />
+                      <span>Use placeholders: {"{totalAmount}"} (required), {"{paymentNumber}"} (auto-filled)</span>
+                   </div>
+                 </div>
+
+                 {/* Payment Review */}
+                 <div className="space-y-2">
+                   <Label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Payment Review</Label>
+                   <Textarea
+                     rows={4}
+                     value={fastLaneMessages.paymentReview}
+                     onChange={(e) => setFastLaneMessages({...fastLaneMessages, paymentReview: e.target.value})}
+                     className="bg-zinc-50 border-zinc-200 focus:ring-black dark:bg-white/5 dark:border-white/10 dark:focus:ring-white resize-none font-mono text-sm"
+                   />
+                   <p className="text-xs text-zinc-400">Use {"{name}"} and {"{digits}"} placeholders.</p>
+                 </div>
+
+                 {/* Invalid Payment Digits */}
+                 <div className="space-y-2">
+                   <div className="flex items-center gap-2">
+                     <div className="h-2 w-2 rounded-full bg-red-500" />
+                     <Label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Invalid Payment Digits</Label>
+                   </div>
+                   <Textarea
+                     rows={3}
+                     value={fastLaneMessages.invalidPaymentDigits}
+                     onChange={(e) => setFastLaneMessages({...fastLaneMessages, invalidPaymentDigits: e.target.value})}
+                     className="bg-zinc-50 border-zinc-200 focus:ring-black dark:bg-white/5 dark:border-white/10 dark:focus:ring-white resize-none font-mono text-sm"
+                   />
+                   <p className="text-xs text-zinc-400">Shown when input is not 2 digits.</p>
+                 </div>
+               </div>
+             </SmartCard>
+           </div>
+         </div>
+
+          {/* RIGHT COLUMN: Logistics & Policy (5/12) */}
+          <div className="lg:col-span-5 space-y-8 sticky lg:top-8">
+             
+             {/* Logistics Card */}
+             <SmartCard variant="static" className="p-6 md:p-8 space-y-8">
+               <div className="flex items-center gap-3 mb-6">
+                <div className="h-10 w-10 rounded-xl bg-purple-100 dark:bg-purple-500/20 flex items-center justify-center">
+                  <Truck className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-zinc-900 dark:text-white">Logistics</h3>
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">Delivery & Payments</p>
+                </div>
+              </div>
+
+              {/* Delivery Config */}
+              <div className="space-y-5">
+                <h4 className="text-sm font-semibold uppercase tracking-wider text-zinc-500">Delivery Fees</h4>
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="product-decline">Product Decline Message</Label>
+                    <Label className="text-xs">Inside Dhaka</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-zinc-400">৳</span>
+                      <Input 
+                        type="number" 
+                        value={deliveryInsideDhaka} 
+                        onChange={(e) => setDeliveryInsideDhaka(Number(e.target.value))}
+                        className="pl-8 bg-zinc-50 dark:bg-white/5 border-zinc-200 dark:border-white/10" 
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Outside Dhaka</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-zinc-400">৳</span>
+                      <Input 
+                        type="number" 
+                        value={deliveryOutsideDhaka} 
+                        onChange={(e) => setDeliveryOutsideDhaka(Number(e.target.value))}
+                        className="pl-8 bg-zinc-50 dark:bg-white/5 border-zinc-200 dark:border-white/10" 
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                    <Label className="text-xs">Estimated Time</Label>
+                    <Input 
+                      value={deliveryTime} 
+                      onChange={(e) => setDeliveryTime(e.target.value)}
+                      className="bg-zinc-50 dark:bg-white/5 border-zinc-200 dark:border-white/10" 
+                      placeholder="e.g. 3-5 days"
+                    />
+                </div>
+
+                <div className="flex items-center space-x-2 pt-2">
+                    <Checkbox
+                      id="auto-delivery"
+                      checked={autoDelivery}
+                      onCheckedChange={(c) => setAutoDelivery(!!c)}
+                    />
+                    <Label htmlFor="auto-delivery" className="font-normal text-sm cursor-pointer">
+                      Auto-mention delivery info in conversations
+                    </Label>
+                </div>
+
+                <div className="space-y-2">
+                    <Label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Delivery Information Message</Label>
                     <Textarea
-                      id="product-decline"
-                      rows={2}
-                      value={fastLaneMessages.product_decline}
-                      onChange={(e) => setFastLaneMessages({...fastLaneMessages, product_decline: e.target.value})}
-                      placeholder="Message when user declines product..."
+                      id="delivery-msg"
+                      rows={4}
+                      value={fastLaneMessages.delivery_info}
+                      onChange={(e) => setFastLaneMessages({...fastLaneMessages, delivery_info: e.target.value})}
+                      placeholder="Message when customer asks about delivery..."
+                      className="bg-zinc-50 border-zinc-200 focus:ring-black dark:bg-white/5 dark:border-white/10 dark:focus:ring-white resize-none"
                     />
-                  </div>
+                    <p className="text-xs text-zinc-400">
+                      Shown when customer asks: "delivery charge?", "কত দিন?", etc.
+                    </p>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+              </div>
 
-          {/* Conversation Style */}
-          <Card className="bg-card border border-border shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-base font-semibold">Conversation Style</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div>
-                <Label>Language Mix</Label>
-                <div className="mt-3 space-y-3">
-                  <div>
-                    <div className="flex items-center justify-between text-sm mb-2">
-                      <span>Bengali</span>
-                      <span className="font-medium">{bengaliPercent[0]}%</span>
+              <Separator className="bg-zinc-100 dark:bg-white/10" />
+
+              {/* Payment Methods */}
+              <div className="space-y-5">
+                <h4 className="text-sm font-semibold uppercase tracking-wider text-zinc-500">Payment Methods</h4>
+                
+                {/* bKash */}
+                <div className="p-3 rounded-xl border border-zinc-200 dark:border-white/10 bg-zinc-50/50 dark:bg-white/5 space-y-3">
+                   <div className="flex items-center justify-between">
+                     <div className="flex items-center gap-2">
+                       <div className="h-6 w-6 rounded bg-[#E2136E] text-white flex items-center justify-center text-[10px] font-bold">b</div>
+                       <Label className="font-semibold">bKash</Label>
+                     </div>
+                     <Switch checked={bkashEnabled} onCheckedChange={setBkashEnabled} />
+                   </div>
+                   {bkashEnabled && (
+                     <Input 
+                       value={bkashNumber}
+                       onChange={(e) => setBkashNumber(e.target.value)}
+                       placeholder="01XXXXXXXXX"
+                       className="bg-white dark:bg-black/20 h-9 text-sm"
+                     />
+                   )}
+                </div>
+
+                {/* Nagad */}
+                <div className="p-3 rounded-xl border border-zinc-200 dark:border-white/10 bg-zinc-50/50 dark:bg-white/5 space-y-3">
+                   <div className="flex items-center justify-between">
+                     <div className="flex items-center gap-2">
+                       <div className="h-6 w-6 rounded bg-[#EC1D25] text-white flex items-center justify-center text-[10px] font-bold">N</div>
+                       <Label className="font-semibold">Nagad</Label>
+                     </div>
+                     <Switch checked={nagadEnabled} onCheckedChange={setNagadEnabled} />
+                   </div>
+                   {nagadEnabled && (
+                     <Input 
+                       value={nagadNumber}
+                       onChange={(e) => setNagadNumber(e.target.value)}
+                       placeholder="01XXXXXXXXX"
+                       className="bg-white dark:bg-black/20 h-9 text-sm"
+                     />
+                   )}
+                </div>
+
+                {/* COD */}
+                <div className="flex items-center justify-between p-3 rounded-xl border border-zinc-200 dark:border-white/10 bg-zinc-50/50 dark:bg-white/5">
+                   <div className="flex items-center gap-2">
+                     <CreditCard className="h-5 w-5 text-zinc-500" />
+                     <Label className="font-semibold">Cash On Delivery</Label>
+                   </div>
+                   <Switch checked={codEnabled} onCheckedChange={setCodEnabled} />
+                </div>
+
+                <div className="space-y-2 pt-2">
+                    <Label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Payment Information Message</Label>
+                    <Textarea
+                      rows={5}
+                      value={fastLaneMessages.payment_info}
+                      onChange={(e) => setFastLaneMessages({...fastLaneMessages, payment_info: e.target.value})}
+                      placeholder="Message when customer asks about payment methods..."
+                      className="bg-zinc-50 border-zinc-200 focus:ring-black dark:bg-white/5 dark:border-white/10 dark:focus:ring-white resize-none"
+                    />
+                    <p className="text-xs text-zinc-400">
+                      Shown when customer asks: "payment?", "কিভাবে?", "bKash?", etc.
+                    </p>
+                </div>
+
+                <Separator className="bg-zinc-100 dark:bg-white/10" />
+
+                <div className="space-y-2 pt-2">
+                    <Label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Return Policy Message</Label>
+                    <Textarea
+                      rows={5}
+                      value={fastLaneMessages.return_policy}
+                      onChange={(e) => setFastLaneMessages({...fastLaneMessages, return_policy: e.target.value})}
+                      placeholder="Your return and exchange policy..."
+                      className="bg-zinc-50 border-zinc-200 focus:ring-black dark:bg-white/5 dark:border-white/10 dark:focus:ring-white resize-none"
+                    />
+                    <p className="text-xs text-zinc-400">
+                      Shown when customer asks: "return?", "exchange?", "ফেরত?", etc.
+                    </p>
+                </div>
+              </div>
+             </SmartCard>
+
+             {/* Policy & Messages Card (Collapsible for neatness) */}
+             <SmartCard variant="static" className="p-6 md:p-8">
+               <div className="flex items-center gap-3 mb-6">
+                <div className="h-10 w-10 rounded-xl bg-green-100 dark:bg-green-500/20 flex items-center justify-center">
+                  <MessageSquare className="h-5 w-5 text-green-600 dark:text-green-400" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-zinc-900 dark:text-white">Templates</h3>
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">Edit automated replies.</p>
+                </div>
+              </div>
+
+               <div className="relative">
+                 {/* Coming Soon Overlay */}
+                 <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/50 dark:bg-black/50 backdrop-blur-[1px] rounded-lg">
+                   <Badge variant="secondary" className="bg-zinc-900 text-white dark:bg-white dark:text-black px-4 py-1.5 h-auto text-xs font-bold gap-2 shadow-xl">
+                     <Sparkles className="h-3 w-3" />
+                     Coming Soon
+                   </Badge>
+                 </div>
+                 
+                 <div className="opacity-40 pointer-events-none">
+                   <Collapsible open={false}>
+                    <div className="flex items-center justify-between p-3 rounded-lg border border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-white/5">
+                      <span className="font-medium">Advanced Message Templates</span>
+                      <ChevronDown className="h-4 w-4" />
                     </div>
-                    <Slider value={bengaliPercent} onValueChange={setBengaliPercent} max={100} step={10} />
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between text-sm mb-2">
-                      <span>English</span>
-                      <span className="font-medium">{100 - bengaliPercent[0]}%</span>
-                    </div>
-                    <Slider value={[100 - bengaliPercent[0]]} max={100} step={10} disabled />
-                  </div>
-                </div>
+                   </Collapsible>
+                 </div>
               </div>
+             </SmartCard>
 
-              <div className="flex items-center justify-between">
-                <Label htmlFor="emojis">Use Emojis</Label>
-                <Switch id="emojis" checked={useEmojis} onCheckedChange={setUseEmojis} />
-              </div>
-
-              <div className="p-3 rounded-lg bg-muted/50 border border-border">
-                <p className="text-xs text-muted-foreground mb-2">Example response:</p>
-                <p className="text-sm">{toneExamples[tone as keyof typeof toneExamples]}</p>
-              </div>
-            </CardContent>
-          </Card>
-
-
-          {/* Delivery Information */}
-          <Card className="bg-card border border-border shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <Truck className="h-4 w-4" />
-                Delivery Information
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="dhaka-charge">Inside Dhaka (৳)</Label>
-                  <div className="relative mt-1.5">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">৳</span>
-                    <Input 
-                      id="dhaka-charge" 
-                      type="number" 
-                      value={deliveryInsideDhaka}
-                      onChange={(e) => setDeliveryInsideDhaka(Number(e.target.value))}
-                      className="pl-8 font-mono" 
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="outside-charge">Outside Dhaka (৳)</Label>
-                  <div className="relative mt-1.5">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">৳</span>
-                    <Input 
-                      id="outside-charge" 
-                      type="number" 
-                      value={deliveryOutsideDhaka}
-                      onChange={(e) => setDeliveryOutsideDhaka(Number(e.target.value))}
-                      className="pl-8 font-mono" 
-                    />
-                  </div>
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="delivery-time">Estimated Delivery Time</Label>
-                <Input 
-                  id="delivery-time" 
-                  value={deliveryTime}
-                  onChange={(e) => setDeliveryTime(e.target.value)}
-                  className="mt-1.5" 
-                />
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="auto-delivery" 
-                  checked={autoDelivery}
-                  onCheckedChange={(c) => setAutoDelivery(!!c)}
-                />
-                <Label htmlFor="auto-delivery" className="font-normal text-sm">
-                  Auto-mention delivery info in conversations
-                </Label>
-              </div>
-              <div>
-                <Label htmlFor="delivery-msg">Delivery Information Message</Label>
-                <Textarea
-                  id="delivery-msg"
-                  rows={4}
-                  value={fastLaneMessages.delivery_info}
-                  onChange={(e) => setFastLaneMessages({...fastLaneMessages, delivery_info: e.target.value})}
-                  placeholder="Message when customer asks about delivery..."
-                  className="mt-1.5"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Shown when customer asks: "delivery charge?", "কত দিন?", etc.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Return Policy */}
-          <Card className="bg-card border border-border shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <Package className="h-4 w-4" />
-                Return & Exchange Policy
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div>
-                <Label htmlFor="return-policy-msg">Return Policy Message</Label>
-                <Textarea
-                  id="return-policy-msg"
-                  rows={6}
-                  value={fastLaneMessages.return_policy}
-                  onChange={(e) => setFastLaneMessages({...fastLaneMessages, return_policy: e.target.value})}
-                  placeholder="Your return and exchange policy..."
-                  className="mt-1.5"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Shown when customer asks: "return?", "exchange?", "ফেরত?", etc.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Payment Instructions */}
-          <Card className="bg-card border border-border shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <CreditCard className="h-4 w-4" />
-                Payment Instructions
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label>Payment Methods</Label>
-                <div className="space-y-2 mt-2">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox 
-                      id="bkash" 
-                      checked={bkashEnabled}
-                      onCheckedChange={(c) => setBkashEnabled(!!c)}
-                    />
-                    <Label htmlFor="bkash" className="font-normal">
-                      bKash
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox 
-                      id="nagad" 
-                      checked={nagadEnabled}
-                      onCheckedChange={(c) => setNagadEnabled(!!c)}
-                    />
-                    <Label htmlFor="nagad" className="font-normal">
-                      Nagad
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox 
-                      id="cod" 
-                      checked={codEnabled}
-                      onCheckedChange={(c) => setCodEnabled(!!c)}
-                    />
-                    <Label htmlFor="cod" className="font-normal">
-                      Cash on Delivery
-                    </Label>
-                  </div>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="bkash-number">bKash Number</Label>
-                  <Input 
-                    id="bkash-number" 
-                    value={bkashNumber}
-                    onChange={(e) => setBkashNumber(e.target.value)}
-                    className="mt-1.5 font-mono" 
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="nagad-number">Nagad Number</Label>
-                  <Input 
-                    id="nagad-number" 
-                    value={nagadNumber}
-                    onChange={(e) => setNagadNumber(e.target.value)}
-                    className="mt-1.5 font-mono" 
-                  />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="payment-info-msg">Payment Information Message</Label>
-                <Textarea
-                  id="payment-info-msg"
-                  rows={5}
-                  value={fastLaneMessages.payment_info}
-                  onChange={(e) => setFastLaneMessages({...fastLaneMessages, payment_info: e.target.value})}
-                  placeholder="Message when customer asks about payment methods..."
-                  className="mt-1.5"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Shown when customer asks: "payment?", "কিভাবে?", "bKash?", etc.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* AI Behavior Rules */}
-          <Card className="bg-card border border-border shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <Settings className="h-4 w-4" />
-                AI Behavior Rules
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="multi-product" 
-                  checked={multiProduct}
-                  onCheckedChange={(c) => setMultiProduct(!!c)}
-                />
-                <Label htmlFor="multi-product" className="font-normal text-sm">
-                  Allow multiple products in one order
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="ask-size" 
-                  checked={askSize}
-                  onCheckedChange={(c) => setAskSize(!!c)}
-                />
-                <Label htmlFor="ask-size" className="font-normal text-sm">
-                  Ask for size/color if available
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="show-stock" 
-                  checked={showStock}
-                  onCheckedChange={(c) => setShowStock(!!c)}
-                />
-                <Label htmlFor="show-stock" className="font-normal text-sm">
-                  Show stock availability
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="alternatives" 
-                  checked={offerAlternatives}
-                  onCheckedChange={(c) => setOfferAlternatives(!!c)}
-                />
-                <Label htmlFor="alternatives" className="font-normal text-sm">
-                  Offer alternatives if out of stock
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="confirmation" 
-                  checked={sendConfirmation}
-                  onCheckedChange={(c) => setSendConfirmation(!!c)}
-                />
-                <Label htmlFor="confirmation" className="font-normal text-sm">
-                  Send order confirmation message
-                </Label>
-              </div>
-
-              <Button variant="outline" size="sm" className="mt-4 bg-transparent">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Custom Rule
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Out of Stock Message */}
-          <Card className="bg-card border border-border shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4" />
-                Out of Stock Message
-              </CardTitle>
-              <CardDescription>
-                Message shown when customer tries to order an out-of-stock product
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <Label htmlFor="out-of-stock-msg">Out of Stock Message</Label>
-                <Textarea
-                  id="out-of-stock-msg"
-                  rows={5}
-                  value={outOfStockMessage}
-                  onChange={(e) => setOutOfStockMessage(e.target.value)}
-                  placeholder="Message when product is out of stock..."
-                  className="mt-1.5"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Use {"{productName}"} to include the product name. Shown when customer clicks "Order Now" or types "order korbo" for an out-of-stock product.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          </div>
         </div>
 
-
-        {/* Fast Lane Messages */}
-        <Card className="bg-card border border-border shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <MessageSquare className="h-4 w-4" />
-              Fast Lane Messages
-            </CardTitle>
-            <CardDescription>
-              Customize bot responses for common interactions. Use {"{name}"} as placeholder.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Conversational steps moved to Order Collection Style */}
-
-            <div>
-              <Label htmlFor="order-confirmed">Order Confirmed</Label>
-              <Textarea
-                id="order-confirmed"
-                rows={4}
-                value={fastLaneMessages.order_confirmed}
-                onChange={(e) => setFastLaneMessages({...fastLaneMessages, order_confirmed: e.target.value})}
-                placeholder="Message when order is confirmed..."
-                className="mt-1.5"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Final success message after order confirmation
+        {/* Floating Action Bar */}
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-lg border-t border-zinc-200 dark:border-white/10 z-40 lg:pl-72">
+           <div className="max-w-[1600px] mx-auto flex items-center justify-between">
+              <p className="text-sm text-zinc-500 hidden sm:block">
+                {saving ? "Saving changes..." : "Unsaved changes are visible to customers immediately after saving."}
               </p>
-            </div>
-
-            <div>
-              <Label htmlFor="order-cancelled">Order Cancelled</Label>
-              <Textarea
-                id="order-cancelled"
-                rows={2}
-                value={fastLaneMessages.order_cancelled}
-                onChange={(e) => setFastLaneMessages({...fastLaneMessages, order_cancelled: e.target.value})}
-                placeholder="Message when order is cancelled..."
-                className="mt-1.5"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Shown when user cancels the order
-              </p>
-            </div>
-
-            <div>
-              <Label htmlFor="payment-instructions">Payment Instructions</Label>
-              <Textarea
-                id="payment-instructions"
-                rows={6}
-                value={fastLaneMessages.paymentInstructions}
-                onChange={(e) => setFastLaneMessages({...fastLaneMessages, paymentInstructions: e.target.value})}
-                placeholder="Message with payment instructions..."
-                className="mt-1.5"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Use {"{totalAmount}"} and {"{paymentNumber}"} placeholders. {"{paymentNumber}"} will be replaced with all enabled payment methods (bKash, Nagad, etc.)
-              </p>
-            </div>
-
-            <div>
-              <Label htmlFor="payment-review">Payment Review</Label>
-              <Textarea
-                id="payment-review"
-                rows={4}
-                value={fastLaneMessages.paymentReview}
-                onChange={(e) => setFastLaneMessages({...fastLaneMessages, paymentReview: e.target.value})}
-                placeholder="Message after receiving payment digits..."
-                className="mt-1.5"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Use {"{name}"} and {"{digits}"} placeholders
-              </p>
-            </div>
-
-            <div>
-              <Label htmlFor="invalid-payment-digits">Invalid Payment Digits</Label>
-              <Textarea
-                id="invalid-payment-digits"
-                rows={3}
-                value={fastLaneMessages.invalidPaymentDigits}
-                onChange={(e) => setFastLaneMessages({...fastLaneMessages, invalidPaymentDigits: e.target.value})}
-                placeholder="Error message for invalid digits..."
-                className="mt-1.5"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Shown when input is not 2 digits
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Advanced Settings */}
-        <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
-          <Card className="bg-card border border-border shadow-sm">
-            <CollapsibleTrigger asChild>
-              <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
-                <CardTitle className="text-base font-semibold flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <Settings className="h-4 w-4" />
-                    Advanced (JSON Configuration)
-                  </span>
-                  <ChevronDown className={`h-4 w-4 transition-transform ${advancedOpen ? "rotate-180" : ""}`} />
-                </CardTitle>
-                <CardDescription>For developers only</CardDescription>
-              </CardHeader>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <CardContent>
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 mb-4">
-                  <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-                  <span className="text-sm text-yellow-800 dark:text-yellow-200">
-                    Modifying this configuration may affect bot behavior
-                  </span>
-                </div>
-                <ScrollArea className="h-64">
-                  <pre className="p-4 rounded-lg bg-muted/50 text-xs font-mono overflow-x-auto">
-                    {`{
-  "model": "gpt-4-turbo",
-  "temperature": 0.7,
-  "maxTokens": 1000,
-  "systemPrompt": "You are a helpful shopping assistant for Code and Cortex Fashion...",
-  "responseFormat": {
-    "greeting": true,
-    "productInfo": true,
-    "priceFormat": "BDT"
-  },
-  "fallbackBehavior": {
-    "unknownProduct": "ask_clarification",
-    "outOfStock": "suggest_alternatives"
-  }
-}`}
-                  </pre>
-                </ScrollArea>
-              </CardContent>
-            </CollapsibleContent>
-          </Card>
-        </Collapsible>
-
-        {/* Footer Actions */}
-        <div className="sticky bottom-[3.8rem] lg:bottom-0 z-10 -mx-4 lg:-mx-6 -mb-4 lg:-mb-6 p-4 lg:p-6 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-t border-border flex flex-col sm:flex-row sm:justify-end gap-3 mt-6">
-          <Button size="lg" className="sm:order-2" onClick={handleSave} disabled={saving}>
-            {saving ? (
-              <>
-                <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save className="h-4 w-4 mr-2" />
-                Save Changes
-              </>
-            )}
-          </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="outline"
+              <Button 
+                onClick={handleSave} 
+                disabled={saving}
                 size="lg"
-                className="text-destructive border-destructive/50 hover:bg-destructive/10 sm:order-1 bg-transparent"
+                className="w-full sm:w-auto min-w-[150px] shadow-xl md:mr-8 bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
               >
-                <RotateCcw className="h-4 w-4 mr-2" />
-                Reset to Default
+                {saving ? (
+                  <>
+                    <div className="h-4 w-4 rounded-full border-2 border-white/20 border-t-white animate-spin mr-2" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    Save Configuration
+                  </>
+                )}
               </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Reset all settings?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will revert all your AI settings, including messages and payment instructions, to their original default values. This action cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleReset} className="bg-transparent text-destructive border border-destructive hover:bg-destructive/10">
-                  Yes, Reset Everything
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+           </div>
         </div>
       </div>
     </RequireFacebookPage>

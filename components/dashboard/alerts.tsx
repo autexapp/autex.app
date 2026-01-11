@@ -1,4 +1,5 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { SmartCard } from "@/components/ui/premium/smart-card"
 import { AlertCircle, AlertTriangle, Info } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
@@ -44,14 +45,16 @@ export function Alerts() {
   if (alerts.length === 0) return null
 
   return (
-    <Card className="bg-card border border-border shadow-sm">
-      <CardHeader className="pb-3">
+    <SmartCard>
+      <CardHeader className="pb-3 border-b border-border/50">
         <div className="flex items-center gap-2">
-          <AlertCircle className="h-5 w-5 text-amber-500" />
-          <CardTitle className="text-lg font-semibold">Alerts</CardTitle>
+          <div className="p-1.5 rounded-md bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
+            <AlertCircle className="h-4 w-4" />
+          </div>
+          <CardTitle className="text-base font-serif tracking-wide">Alerts & Notifications</CardTitle>
         </div>
       </CardHeader>
-      <CardContent className="pt-0 space-y-2">
+      <CardContent className="pt-4 space-y-2">
         {alerts.map((alert) => {
           const config = alertConfig[alert.type]
           const Icon = config.icon
@@ -60,16 +63,23 @@ export function Alerts() {
               key={alert.id}
               href={alert.href}
               className={cn(
-                "flex items-start gap-3 p-3 rounded-lg transition-colors hover:opacity-80",
+                "group flex items-start gap-3 p-3 rounded-lg transition-all duration-200 border border-transparent",
+                "hover:scale-[1.01] hover:shadow-sm",
                 config.bgClassName,
+                // Add border in light mode for crispness
+                "border-black/5 dark:border-transparent" 
               )}
             >
               <Icon className={cn("h-5 w-5 mt-0.5 shrink-0", config.className)} />
-              <span className={cn("text-sm font-medium", config.className)}>{alert.message}</span>
+              <div className="flex-1">
+                <span className={cn("text-sm font-medium block group-hover:underline decoration-wavy decoration-2 underline-offset-4", config.className)}>
+                  {alert.message}
+                </span>
+              </div>
             </Link>
           )
         })}
       </CardContent>
-    </Card>
+    </SmartCard>
   )
 }

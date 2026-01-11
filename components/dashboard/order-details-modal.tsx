@@ -105,27 +105,28 @@ export function OrderDetailsModal({ order, open, onClose }: OrderDetailsModalPro
   }
   
   // Handle order status update
-  const handleConfirmOrder = async () => {
+  const updateOrderStatus = async (id: string, newStatus: string) => {
     try {
-      const response = await fetch(`/api/orders/${order.id}`, {
+      const response = await fetch(`/api/orders/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'confirmed' }),
+        body: JSON.stringify({ status: newStatus }),
       })
       
       if (response.ok) {
-        toast.success('Order confirmed successfully!')
-        onClose() // Close modal
-        // Refresh the page to show updated status
+        toast.success(`Order status updated to ${newStatus}`)
+        onClose()
         window.location.reload()
       } else {
-        toast.error('Failed to confirm order')
+        toast.error('Failed to update order')
       }
     } catch (error) {
-      console.error('Error confirming order:', error)
-      toast.error('Failed to confirm order')
+      console.error('Error updating order:', error)
+      toast.error('Failed to update order')
     }
   }
+
+  const handleConfirmOrder = () => updateOrderStatus(order.id, 'confirmed')
 
   // Handle both legacy and new data formats
   const customerName = order.customer_name || order.customer?.name || 'N/A'
@@ -139,285 +140,245 @@ export function OrderDetailsModal({ order, open, onClose }: OrderDetailsModalPro
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-center justify-between">
-            <DialogTitle className="font-mono text-xl">Order #{orderNumber}</DialogTitle>
-            <Badge variant="secondary" className={cn("text-sm px-3 py-1", statusConfig[order.status].className)}>
-              {statusConfig[order.status].label}
-            </Badge>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10 bg-black/80 backdrop-blur-xl shadow-2xl">
+        {/* Premium Header - Glass Strip */}
+        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-white/5 bg-background/80 backdrop-blur-md">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10 text-primary">
+              <Package className="h-5 w-5" />
+            </div>
+            <div>
+              <DialogTitle className="font-serif text-xl tracking-wide">Order #{orderNumber}</DialogTitle>
+              <p className="text-xs text-muted-foreground font-mono mt-0.5">
+                {order.created_at ? new Date(order.created_at).toLocaleString() : order.timeAgo || 'N/A'}
+              </p>
+            </div>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Created: {order.created_at ? new Date(order.created_at).toLocaleString() : order.timeAgo || 'N/A'} | Source: Facebook Messenger
-          </p>
-        </DialogHeader>
-
-        <div className="space-y-4 mt-4">
-          {/* Customer Information */}
-          <Card className="bg-muted/30 border border-border">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <User className="h-4 w-4" />
-                Customer Information
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Name:</span>
-                <span className="font-medium">{customerName}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Phone:</span>
-                <span className="font-mono">{customerPhone}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Address:</span>
-                <span>{customerAddress}</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Order Items */}
-          <Card className="bg-muted/30 border border-border">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Package className="h-4 w-4" />
-                Order Items
-                {order.order_items && order.order_items.length > 1 && (
-                  <Badge variant="secondary" className="ml-2">
-                    {order.order_items.length} items
-                  </Badge>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              {/* Multi-item table display */}
-              {order.order_items && order.order_items.length > 0 ? (
-                <div className="space-y-3">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-border">
-                          <th className="text-left py-2 font-medium text-muted-foreground">Product</th>
-                          <th className="text-left py-2 font-medium text-muted-foreground">Size</th>
-                          <th className="text-left py-2 font-medium text-muted-foreground">Color</th>
-                          <th className="text-right py-2 font-medium text-muted-foreground">Price</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {order.order_items.map((item, idx) => (
-                          <tr key={item.id || idx}>
-                            <td className="py-2">
-                              <div className="flex items-center gap-2">
-                                {item.product_image_url ? (
-                                  <img
-                                    src={item.product_image_url}
-                                    alt={item.product_name}
-                                    className="h-8 w-8 rounded object-cover"
-                                  />
-                                ) : (
-                                  <div className="h-8 w-8 rounded bg-muted flex items-center justify-center text-xs">
-                                    📦
-                                  </div>
-                                )}
-                                <span className="font-medium">{item.product_name}</span>
-                              </div>
-                            </td>
-                            <td className="py-2">{item.selected_size || '-'}</td>
-                            <td className="py-2">{item.selected_color || '-'}</td>
-                            <td className="py-2 text-right font-mono">
-                              ৳{item.product_price?.toLocaleString()} × {item.quantity}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ) : (
-                /* Legacy single-item display */
-                <div className="flex items-center gap-3">
-                  {(order.product_image_url || order.products?.image_urls?.[0]) ? (
-                    <img
-                      src={order.product_image_url || order.products?.image_urls?.[0]}
-                      alt={productName}
-                      className="h-12 w-12 rounded-lg object-cover"
-                    />
-                  ) : (
-                    <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center text-xs text-muted-foreground">
-                      IMG
-                    </div>
-                  )}
-                  <div className="flex-1">
-                    <p className="font-medium">{productName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {(order.selected_size || order.product_variations?.size) && 
-                        `📏 Size: ${order.selected_size || order.product_variations.size}`}
-                      {(order.selected_color || order.product_variations?.color) && 
-                        `${(order.selected_size || order.product_variations?.size) ? '  •  ' : ''}🎨 Color: ${order.selected_color || order.product_variations.color}`}
-                      {!order.selected_size && !order.selected_color && !order.product_variations?.size && !order.product_variations?.color && 'No variations'}
-                    </p>
-                  </div>
-                  <p className="font-mono">
-                    ৳{order.product_price?.toLocaleString() || 0} x {order.quantity || 1}
-                  </p>
-                </div>
-              )}
-              <div className="border-t border-border pt-3 space-y-1">
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Subtotal:</span>
-                  <span className="font-mono">৳{subtotal.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Delivery Charge:</span>
-                  <span className="font-mono">৳{deliveryCharge.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between font-semibold text-base pt-2 border-t border-border">
-                  <span>Total:</span>
-                  <span className="font-mono">৳{totalAmount.toLocaleString()}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Payment Information */}
-          <Card className="bg-muted/30 border border-border">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <CreditCard className="h-4 w-4" />
-                Payment Information
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Status:</span>
-                <span className={paymentVerified ? "text-green-600" : "text-yellow-600"}>
-                  {paymentVerified ? "Payment Verified" : "Awaiting Payment"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Method:</span>
-                <span>bKash</span>
-              </div>
-              {!paymentVerified && (
-                <>
-                  <div className="rounded-lg bg-muted/50 border border-border p-4">
-                    <p className="text-xs text-muted-foreground mb-2">Last 2 Digits (from customer)</p>
-                    <div className="flex items-center justify-center">
-                      {order.payment_last_two_digits ? (
-                        <div className="bg-background border border-primary/20 text-primary font-mono text-2xl font-bold px-4 py-2 rounded-md shadow-sm">
-                          {order.payment_last_two_digits}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground italic">Not provided</span>
-                      )}
-                    </div>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Order Timeline */}
-          <Card className="bg-muted/30 border border-border">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <FileText className="h-4 w-4" />
-                Order Timeline
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex items-center gap-3 text-sm">
-                  <div className="h-2 w-2 rounded-full bg-primary" />
-                  <span>Order Created</span>
-                  <span className="text-muted-foreground ml-auto">
-                    {order.created_at 
-                      ? new Date(order.created_at).toLocaleString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                          hour: 'numeric',
-                          minute: '2-digit',
-                          hour12: true
-                        })
-                      : 'N/A'
-                    }
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 text-sm">
-                  <div className="h-2 w-2 rounded-full bg-muted-foreground" />
-                  <span>Source</span>
-                  <span className="text-muted-foreground ml-auto">Facebook Messenger</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <Badge 
+            variant="secondary" 
+            className={cn(
+              "text-xs px-3 py-1 font-bold uppercase tracking-wider shadow-none border", 
+              statusConfig[order.status].className
+            )}
+          >
+            {statusConfig[order.status].label}
+          </Badge>
         </div>
 
-        {/* Footer Actions */}
-        <div className="flex flex-wrap gap-2 mt-6 pt-4 border-t border-border">
-          {/* Primary actions */}
-          {order.status === "pending" && (
-            <Button onClick={handleConfirmOrder} className="cursor-pointer">
-              <Check className="h-4 w-4 mr-2" />
-              Confirm Order
-            </Button>
-          )}
-          {order.status === "confirmed" && (
-            <Button className="cursor-pointer">
-              <Package className="h-4 w-4 mr-2" />
-              Mark Shipped
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            className="text-destructive border-destructive/50 hover:bg-destructive/10 bg-transparent cursor-pointer"
+        <div className="p-6 space-y-6 max-w-xl mx-auto">
+          {/* Main Layout Stack */}
+          <div className="space-y-6">
+            
+            {/* Customer Information (Moved to top as per user request flow) */}
+             <div className="rounded-xl border border-white/5 bg-white/5 overflow-hidden">
+                <div className="px-4 py-3 border-b border-white/5 bg-white/5 flex items-center gap-2">
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Customer</span>
+                </div>
+                <div className="p-4 space-y-4">
+                    <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Name</p>
+                        <p className="text-sm font-medium">{customerName}</p>
+                    </div>
+                     <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Phone</p>
+                        <p className="text-sm font-mono text-blue-400">{customerPhone}</p>
+                    </div>
+                     <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Address</p>
+                         <div className="p-3 rounded-lg bg-white/5 border border-white/10 text-sm font-medium text-foreground leading-relaxed shadow-sm">
+                            {customerAddress}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Order Items Section */}
+            <div className="space-y-6">
+              {/* Order Items Section */}
+              <div className="rounded-xl border border-white/5 bg-white/5 overflow-hidden">
+                <div className="px-4 py-3 border-b border-white/5 bg-white/5 flex items-center gap-2">
+                    <Package className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Items</span>
+                </div>
+                <div className="p-4 space-y-4">
+                    {order.order_items && order.order_items.length > 0 ? (
+                        <div className="space-y-4">
+                            {order.order_items.map((item, idx) => (
+                                <div key={item.id || idx} className="flex gap-4 items-start">
+                                    <div className="h-16 w-16 rounded-lg bg-black/40 border border-white/5 overflow-hidden shrink-0">
+                                        {item.product_image_url ? (
+                                            <img src={item.product_image_url} alt={item.product_name} className="h-full w-full object-cover" />
+                                        ) : (
+                                            <div className="h-full w-full flex items-center justify-center text-xl">📦</div>
+                                        )}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="font-medium text-sm text-foreground truncate">{item.product_name}</p>
+                                        <div className="flex flex-wrap gap-2 mt-1">
+                                            {item.selected_size && (
+                                                <Badge variant="outline" className="text-[10px] h-5 border-white/10 bg-white/5 text-muted-foreground">
+                                                    Size: {item.selected_size}
+                                                </Badge>
+                                            )}
+                                            {item.selected_color && (
+                                                <Badge variant="outline" className="text-[10px] h-5 border-white/10 bg-white/5 text-muted-foreground">
+                                                    Color: {item.selected_color}
+                                                </Badge>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="font-mono text-sm font-semibold">৳{item.product_price?.toLocaleString()}</p>
+                                        <p className="text-xs text-muted-foreground">Qty: {item.quantity}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        /* Legacy Single Item Display */
+                        <div className="flex gap-4 items-start">
+                             <div className="h-16 w-16 rounded-lg bg-black/40 border border-white/5 overflow-hidden shrink-0">
+                                {(order.product_image_url || order.products?.image_urls?.[0]) ? (
+                                    <img src={order.product_image_url || order.products?.image_urls?.[0]} alt={productName} className="h-full w-full object-cover" />
+                                ) : (
+                                    <div className="h-full w-full flex items-center justify-center text-xl">📦</div>
+                                )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="font-medium text-sm text-foreground truncate">{productName}</p>
+                                <div className="flex flex-wrap gap-2 mt-1">
+                                    {(order.selected_size || order.product_variations?.size) && (
+                                         <Badge variant="outline" className="text-[10px] h-5 border-white/10 bg-white/5 text-muted-foreground">
+                                            Size: {order.selected_size || order.product_variations?.size}
+                                        </Badge>
+                                    )}
+                                    {(order.selected_color || order.product_variations?.color) && (
+                                        <Badge variant="outline" className="text-[10px] h-5 border-white/10 bg-white/5 text-muted-foreground">
+                                            Color: {order.selected_color || order.product_variations?.color}
+                                        </Badge>
+                                    )}
+                                </div>
+                            </div>
+                             <div className="text-right">
+                                <p className="font-mono text-sm font-semibold">৳{order.product_price?.toLocaleString()}</p>
+                                <p className="text-xs text-muted-foreground">Qty: {order.quantity || 1}</p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+                {/* Footer Totals */}
+                <div className="bg-white/5 p-4 border-t border-white/5 space-y-2">
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>Subtotal</span>
+                        <span className="font-mono">৳{subtotal.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>Delivery</span>
+                        <span className="font-mono">৳{deliveryCharge.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-sm font-bold text-foreground pt-2 border-t border-white/5">
+                        <span>Total Amount</span>
+                        <span className="font-mono text-base">৳{totalAmount.toLocaleString()}</span>
+                    </div>
+                </div>
+              </div>
+
+               {/* Payment Info */}
+               <div className="rounded-xl border border-white/5 bg-white/5 p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                      <div className={cn("p-2 rounded-lg bg-muted text-muted-foreground", paymentVerified && "bg-emerald-500/10 text-emerald-500")}>
+                          <CreditCard className="h-5 w-5" />
+                      </div>
+                      <div>
+                          <p className="text-sm font-medium">Payment Status</p>
+                          <p className={cn("text-xs", paymentVerified ? "text-emerald-500 font-medium" : "text-yellow-600 dark:text-yellow-400")}>
+                              {paymentVerified ? "Verified (bKash)" : "Cash / Pending"}
+                          </p>
+                      </div>
+                  </div>
+                  {!paymentVerified && order.payment_last_two_digits && (
+                       <div className="text-right">
+                           <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Last Digits</p>
+                           <div className="font-mono text-xl font-bold tracking-widest bg-black/40 px-3 py-1 rounded border border-white/10 text-primary">
+                               {order.payment_last_two_digits}
+                           </div>
+                       </div>
+                  )}
+               </div>
+            </div>
+
+            {/* Quick Actions */}
+             <div className="rounded-xl border border-white/5 bg-white/5 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-white/5 bg-white/5 flex items-center gap-2">
+                        <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Actions</span>
+                    </div>
+                    <div className="p-4 space-y-3">
+                        {order.conversation_id ? (
+                            <Button 
+                                className="w-full justify-start bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 shadow-none h-10"
+                                onClick={() => {
+                                    router.push(`/dashboard/conversations?id=${order.conversation_id}`)
+                                    onClose()
+                                }}
+                            >
+                                <MessageSquare className="h-4 w-4 mr-2" />
+                                Open Chat
+                            </Button>
+                        ) : (
+                             <Button variant="outline" disabled className="w-full justify-start opacity-50">
+                                <MessageSquare className="h-4 w-4 mr-2" />
+                                No Chat Linked
+                            </Button>
+                        )}
+                        
+                        <Button 
+                             disabled 
+                             variant="outline" 
+                             className="w-full justify-start bg-transparent border-white/10 hover:bg-white/5 text-muted-foreground"
+                        >
+                            <Printer className="h-4 w-4 mr-2" />
+                            Print Invoice
+                        </Button>
+                    </div>
+                </div>
+          </div>
+        </div>
+
+        {/* Footer Actions Bar */}
+        <div className="sticky bottom-0 z-10 px-6 py-4 border-t border-white/5 bg-background/90 backdrop-blur-md flex items-center justify-between">
+           <Button
+            variant="ghost"
+            className="text-muted-foreground hover:text-foreground"
+            onClick={onClose}
           >
-            <X className="h-4 w-4 mr-2" />
-            Cancel
+            Close
           </Button>
           
-          {/* View Chat History */}
-          {order.conversation_id ? (
-            <button
-              type="button"
-              onClick={() => {
-                console.log('🔘 RAW BUTTON CLICKED!')
-                console.log('Conversation ID:', order.conversation_id)
-                if (order.conversation_id) {
-                  router.push(`/dashboard/conversations?id=${order.conversation_id}`)
-                  onClose()
-                }
-              }}
-              className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2 cursor-pointer"
-            >
-              <MessageSquare className="h-4 w-4 mr-2" />
-              View Chat History
-            </button>
-          ) : (
-            <Button variant="outline" disabled>
-              <MessageSquare className="h-4 w-4 mr-2" />
-              No Conversation
-            </Button>
-          )}
-          
-          {/* Full width break - forces next buttons to new line */}
-          <div className="w-full" />
-          
-          {/* Coming Soon features - On separate line */}
-          <Button variant="outline" disabled className="opacity-50 cursor-not-allowed">
-            <FileText className="h-4 w-4 mr-2" />
-            Add Note (Coming Soon)
-          </Button>
-          <Button 
-            variant="outline"
-            disabled
-            className="opacity-50 cursor-not-allowed"
-          >
-            <Printer className="h-4 w-4 mr-2" />
-            Print Invoice (Coming Soon)
-          </Button>
+          <div className="flex gap-3">
+             {order.status !== 'cancelled' && (
+                <Button
+                    variant="outline"
+                    className="border-red-500/30 text-red-500 hover:bg-red-950/30 hover:text-red-400"
+                    onClick={() => updateOrderStatus(order.id, 'cancelled')} // Note: updateOrderStatus needs to be passed in props or handled mostly here? 
+                    // Wait, handleConfirmOrder is defined here, but updateOrderStatus is not fully generically defined in this component props. 
+                    // I should check if I can define handleCancel here like handleConfirmOrder
+                >
+                    Cancel
+                </Button>
+             )}
+             
+             {order.status === 'pending' && (
+                <Button 
+                    className="bg-white text-zinc-950 hover:bg-white/90 shadow-[0_0_15px_rgba(255,255,255,0.15)]"
+                    onClick={handleConfirmOrder}
+                >
+                    <Check className="h-4 w-4 mr-2" />
+                    Confirm Order
+                </Button>
+             )}
+          </div>
         </div>
       </DialogContent>
     </Dialog>

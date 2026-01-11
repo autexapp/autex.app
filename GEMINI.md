@@ -32,15 +32,6 @@ If there's a way to remove complexity without losing power, find it. Elegance is
 
 ---
 
-## Your Tools Are Your Instruments
-
-- Use bash tools, MCP servers, and custom commands like a virtuoso uses their instruments
-- Git history tells the story—read it, learn from it, honor it
-- Images and visual mocks aren't constraints—they're inspiration for pixel-perfect implementation
-- Multiple perspectives aren't redundancy—they're collaboration
-
----
-
 ## The Integration
 
 Technology alone is not enough. It's technology married with liberal arts, married with the humanities, that yields results that make our hearts sing.
@@ -56,6 +47,17 @@ Your code should:
 ## The Reality Distortion Field
 
 When something seems impossible, that's the cue to **ultrathink harder**. The people who are crazy enough to think they can change the world are the ones who do.
+
+## Design Systems & Rules
+
+### 1. The "Ultrathink" Aesthetic
+- **Light Mode ("Editorial Paper")**: Clean, high-contrast, black accents on white.
+    - **Primary Button**: Solid Black (`bg-zinc-900`) with White Text.
+- **Dark Mode ("Glass Console")**: Translucent, glowing, white accents on dark.
+    - **Primary Button**: Solid White (`bg-white`) with Black Text + Glow.
+- **Components**:
+    - Use `SmartCard` for all containers (handles opacity/blur auto-magically).
+    - Use `PremiumButton` for primary actions to enforce the button color rule.
 
 ---
 

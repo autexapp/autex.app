@@ -1,5 +1,5 @@
-import { ConversationsSkeleton } from "@/components/skeletons/conversations-skeleton"
+import { PremiumLoader } from "@/components/ui/premium/premium-loader"
 
-export default function ConversationsLoading() {
-  return <ConversationsSkeleton />
+export default function Loading() {
+  return <PremiumLoader />
 }

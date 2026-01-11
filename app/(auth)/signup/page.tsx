@@ -7,17 +7,10 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/client';
-import { Button } from '@/components/ui/button';
+import { SmartCard } from '@/components/ui/premium/smart-card';
+import { PremiumButton } from '@/components/ui/premium/premium-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
 
 const signupSchema = z.object({
@@ -110,111 +103,103 @@ export default function SignupPage() {
 
   if (success) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-4">
-        <Card className="w-full max-w-md border-border">
-          <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl font-serif text-foreground">
+      <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-black px-4">
+        <SmartCard variant="static" className="w-full max-w-md p-8 text-center space-y-6">
+          <div className="space-y-2">
+            <h1 className="text-2xl font-serif font-semibold text-zinc-900 dark:text-white">
               Check your email
-            </CardTitle>
-            <CardDescription className="text-muted-foreground">
+            </h1>
+            <p className="text-zinc-500 dark:text-zinc-400">
               We've sent you a confirmation link. Please check your email to verify your account.
-            </CardDescription>
-          </CardHeader>
-          <CardFooter>
-            <Link href="/login" className="w-full">
-              <Button variant="outline" className="w-full border-border rounded-[0.625rem]">
-                Back to Login
-              </Button>
-            </Link>
-          </CardFooter>
-        </Card>
+            </p>
+          </div>
+          
+          <Link href="/login" className="block w-full">
+            <PremiumButton variant="outline" className="w-full">
+              Back to Login
+            </PremiumButton>
+          </Link>
+        </SmartCard>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md border-border">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-serif text-foreground">
-            Create an account
-          </CardTitle>
-          <CardDescription className="text-muted-foreground">
-            Enter your details to get started with Autex
-          </CardDescription>
-        </CardHeader>
-        <form onSubmit={handleSubmit(onSubmit)}>
-          <CardContent className="space-y-4">
+    <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-black px-4">
+      <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <SmartCard variant="static" className="p-8">
+          <div className="mb-8 text-center space-y-2">
+            <h1 className="text-2xl font-serif font-semibold text-zinc-900 dark:text-white">
+              Create an account
+            </h1>
+            <p className="text-zinc-500 dark:text-zinc-400">
+              Enter your details to get started with Autex
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             {error && (
-              <div className="rounded-[0.625rem] bg-destructive/10 p-3 text-sm text-destructive border border-destructive/20">
+              <div className="rounded-lg bg-red-50 dark:bg-red-900/10 p-3 text-sm text-red-600 dark:text-red-400 border border-red-100 dark:border-red-900/20">
                 {error}
               </div>
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="businessName" className="text-foreground">
-                Business Name
-              </Label>
+              <Label htmlFor="businessName">Business Name</Label>
               <Input
                 id="businessName"
                 type="text"
                 placeholder="Acme Inc."
-                className="border-border rounded-[0.625rem]"
+                className="bg-zinc-50 border-zinc-200 focus:ring-black dark:bg-white/5 dark:border-white/10 dark:focus:ring-white h-11"
                 {...register('businessName')}
               />
               {errors.businessName && (
-                <p className="text-sm text-destructive">{errors.businessName.message}</p>
+                <p className="text-xs text-red-600 dark:text-red-400">{errors.businessName.message}</p>
               )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="phone" className="text-foreground">
-                Phone Number
-              </Label>
+              <Label htmlFor="phone">Phone Number</Label>
               <Input
                 id="phone"
                 type="tel"
                 placeholder="01915969330"
-                className="border-border rounded-[0.625rem]"
+                className="bg-zinc-50 border-zinc-200 focus:ring-black dark:bg-white/5 dark:border-white/10 dark:focus:ring-white h-11"
                 {...register('phone')}
               />
               {errors.phone && (
-                <p className="text-sm text-destructive">{errors.phone.message}</p>
+                <p className="text-xs text-red-600 dark:text-red-400">{errors.phone.message}</p>
               )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-foreground">
-                Email
-              </Label>
+              <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
                 type="email"
                 placeholder="name@example.com"
-                className="border-border rounded-[0.625rem]"
+                className="bg-zinc-50 border-zinc-200 focus:ring-black dark:bg-white/5 dark:border-white/10 dark:focus:ring-white h-11"
                 {...register('email')}
               />
               {errors.email && (
-                <p className="text-sm text-destructive">{errors.email.message}</p>
+                <p className="text-xs text-red-600 dark:text-red-400">{errors.email.message}</p>
               )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-foreground">
-                Password
-              </Label>
+              <Label htmlFor="password">Password</Label>
               <div className="relative">
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
-                  className="border-border rounded-[0.625rem] pr-10"
+                  className="bg-zinc-50 border-zinc-200 focus:ring-black dark:bg-white/5 dark:border-white/10 dark:focus:ring-white pr-10 h-11"
                   {...register('password')}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
                 >
                   {showPassword ? (
                     <EyeOff className="h-4 w-4" />
@@ -224,33 +209,28 @@ export default function SignupPage() {
                 </button>
               </div>
               {errors.password && (
-                <p className="text-sm text-destructive">{errors.password.message}</p>
+                <p className="text-xs text-red-600 dark:text-red-400">{errors.password.message}</p>
               )}
             </div>
-          </CardContent>
-          <CardFooter className="flex flex-col space-y-4">
-            <Button
-              type="submit"
-              className="w-full rounded-[0.625rem]"
-              disabled={isLoading}
-            >
+
+            <PremiumButton type="submit" className="w-full mt-4" disabled={isLoading}>
               {isLoading ? 'Creating account...' : 'Create account'}
-            </Button>
+            </PremiumButton>
             
-            <div className="relative w-full">
+            <div className="relative my-6">
               <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-border" />
+                <span className="w-full border-t border-zinc-200 dark:border-white/10" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">
+                <span className="bg-white dark:bg-black px-2 text-zinc-500">
                   Or continue with
                 </span>
               </div>
             </div>
             
-            <Button 
+            <PremiumButton 
               variant="outline" 
-              className="w-full rounded-[0.625rem]" 
+              className="w-full" 
               onClick={signInWithGoogle}
               disabled={isGoogleLoading}
               type="button"
@@ -278,17 +258,17 @@ export default function SignupPage() {
                 </svg>
               )}
               Continue with Google
-            </Button>
+            </PremiumButton>
             
-            <p className="text-sm text-center text-muted-foreground">
+            <p className="mt-6 text-center text-sm text-zinc-500">
               Already have an account?{' '}
-              <Link href="/login" className="text-foreground hover:underline font-medium">
+              <Link href="/login" className="text-zinc-900 dark:text-white hover:underline font-medium">
                 Login
               </Link>
             </p>
-          </CardFooter>
-        </form>
-      </Card>
+          </form>
+        </SmartCard>
+      </div>
     </div>
   );
 }

@@ -5026,3 +5026,183 @@ Positional parsing used original `lines` array instead of `filteredLines` (where
 ✅ **Address Parsing**: Size/color correctly excluded from address
 ✅ **Bengali Numeral Support**: Quantity parsing supports ০-৯ numerals
 
+---
+
+## AI Director 2.0 - Manual Flagging & Smart Escalation (2026-01-10)
+
+### Overview
+Implemented a comprehensive system to prevent AI hallucination and ensure unanswerable questions are flagged for manual response by the business owner.
+
+---
+
+### 🎯 Part 1: Manual Flagging System (FLAG_MANUAL)
+
+#### Problem Solved
+AI was confidently guessing answers to questions it didn't have information about (e.g., warranty duration, multiple product delivery policy).
+
+#### Database Schema
+**Migration**: `migrations/add_manual_flag_migration.sql`
+```sql
+ALTER TABLE conversations ADD COLUMN needs_manual_response BOOLEAN DEFAULT FALSE;
+ALTER TABLE conversations ADD COLUMN manual_flag_reason TEXT;
+ALTER TABLE conversations ADD COLUMN manual_flagged_at TIMESTAMPTZ;
+CREATE INDEX idx_conversations_manual_flag ON conversations(workspace_id, needs_manual_response);
+```
+
+#### AI Director Action
+Added `FLAG_MANUAL` action type to `AIDirectorDecision` interface:
+```typescript
+action: 'SEND_RESPONSE' | ... | 'FLAG_MANUAL';
+actionData: { flagReason?: string; }
+```
+
+#### Orchestrator Integration
+- **Knowledge Boundary Pre-check**: `lib/conversation/knowledge-check.ts` runs BEFORE AI Director
+- **Specific question detection**: Warranty, return, delivery, payment, location, customization, complaint, order status
+- **If AI lacks knowledge** → FLAG_MANUAL, bypass AI Director call (cost savings!)
+
+---
+
+### 🧠 Part 2: Strict Knowledge Boundaries
+
+#### Problem
+AI didn't know what it didn't know - confidently made up answers.
+
+#### Solution: Flipped Logic (Default = FLAG_MANUAL)
+
+**OLD Approach** (didn't work):
+```
+❌ YOU DON'T KNOW: warranty, custom modifications...
+```
+
+**NEW Approach** (strict):
+```
+✅ YOU MAY ANSWER CONFIDENTLY (ONLY these 7 topics):
+1. Delivery charges (from settings)
+2. Delivery time
+3. Product info (from cart/search)
+4. Cart/Order details
+5. Basic return policy
+6. Payment methods
+7. Order flow guidance
+
+🚫 ANYTHING ELSE = FLAG_MANUAL!
+```
+
+#### Decision Framework in Prompt
+```
+🧠 HOW TO DECIDE:
+Ask yourself: "Is this EXACTLY one of the 7 topics above?"
+- YES → Answer confidently
+- NO or UNSURE → FLAG_MANUAL immediately
+```
+
+---
+
+### ⚡ Part 3: Smart Fast Lane Escalation
+
+#### Problem
+Fast Lane was responding to complex delivery questions (like "অনেকগুলো নিলে charge আলাদা?") with simple delivery info, which didn't answer the actual question.
+
+#### Solution: Hybrid Escalation System
+
+##### Part A: Complex Question Detection (Immediate Skip)
+```typescript
+const isComplexQuestion = 
+  input.length > 80 && 
+  (input.includes('নাকি') || 
+   input.includes(' or ') || 
+   input.includes('আলাদা আলাদা') ||
+   input.includes('একবার'));
+
+if (isComplexQuestion) {
+  return null; // Skip Fast Lane → AI Director
+}
+```
+
+##### Part B: Repeat Question Escalation
+Added `lastFastLaneCategories` to ConversationContext:
+```typescript
+lastFastLaneCategories?: string[]; // Max 3, FIFO queue
+```
+
+**Flow**:
+```
+1st time: "delivery charge?" → Fast Lane → "৳60/৳120"
+2nd time: Same category → Skip Fast Lane → AI Director → FLAG_MANUAL
+```
+
+#### Files Modified
+| File | Changes |
+|------|---------|
+| `types/conversation.ts` | Added `lastFastLaneCategories` field |
+| `lib/conversation/fast-lane.ts` | Added complex question detection, repeat category tracking |
+
+---
+
+### 🔔 Part 4: Dashboard Notifications
+
+#### Notification Badge (TopBar)
+- **Orange badge** on bell icon shows needs_manual_response count
+- **Dropdown item** "🔴 Needs Reply" with count and click-to-filter
+
+#### Conversation List
+- **Indicator**: "🔴 AI Flagged - Needs Your Reply" on flagged conversations
+- **Filter button**: "Needs Reply" with count badge
+
+#### Chat Detail
+- **Orange banner**: Shows flag reason (e.g., "Warranty question - warranty information not supported")
+
+#### Auto-Clear on Reply
+When owner sends message to flagged conversation:
+- Clears `needs_manual_response`, `manual_flag_reason`, `manual_flagged_at`
+- Sets `control_mode` to 'hybrid'
+- Shows toast: "✅ Message sent! Conversation moved to Hybrid mode (bot paused for 30 min)"
+- Dispatches event to refresh TopBar badge
+
+---
+
+### 📁 Files Created/Modified
+
+**New Files**:
+- `lib/conversation/knowledge-check.ts` - Pre-check for unanswerable questions
+- `migrations/add_manual_flag_migration.sql` - Database schema for manual flags
+
+**Modified Files**:
+| File | Changes |
+|------|---------|
+| `types/supabase.ts` | Added `needs_manual_response`, `manual_flag_reason`, `manual_flagged_at` |
+| `types/conversation.ts` | Added `lastFastLaneCategories` for repeat detection |
+| `lib/conversation/ai-director.ts` | Added `FLAG_MANUAL` action, strict knowledge boundaries |
+| `lib/conversation/fast-lane.ts` | Complex question detection, repeat escalation, category tracking |
+| `lib/conversation/orchestrator.ts` | Knowledge pre-check integration, FLAG_MANUAL handler |
+| `app/api/conversations/route.ts` | Added `needs_manual_response` filter, `manualResponseCount` |
+| `app/api/conversations/[id]/messages/route.ts` | Clear manual flag on owner reply |
+| `app/dashboard/conversations/page.tsx` | Needs Reply filter, indicators, toast messages |
+| `components/dashboard/top-bar.tsx` | Orange badge, dropdown item, event listener |
+
+---
+
+### ✅ Technical Achievements
+
+**Anti-Hallucination**:
+- ✅ Strict 7-topic knowledge boundary
+- ✅ Default behavior = FLAG_MANUAL
+- ✅ Decision framework in prompt
+
+**Smart Escalation**:
+- ✅ Complex question detection (length + keywords)
+- ✅ Repeat category tracking (FIFO queue)
+- ✅ Hybrid approach for best accuracy
+
+**Cost Optimization**:
+- ✅ Knowledge pre-check bypasses AI Director for unanswerable questions
+- ✅ Fast Lane handles first-time simple questions
+- ✅ Only complex/repeated questions go to AI
+
+**Dashboard UX**:
+- ✅ Real-time notification badge
+- ✅ Filter for flagged conversations
+- ✅ Auto-clear on owner reply
+- ✅ Toast feedback for hybrid mode
+

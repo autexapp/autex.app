@@ -174,11 +174,11 @@ export function ConversationControlPanel({
   const Icon = config.icon
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2 bg-muted/30 border-b border-border">
+    <div className="flex items-center gap-3 px-4 py-2 bg-zinc-200/50 dark:bg-zinc-900/50 backdrop-blur-md border-b border-white/5 shadow-sm transition-colors duration-300">
       {/* Current Mode Badge */}
       <Badge 
         variant={config.variant}
-        className={cn('flex items-center gap-1.5', config.className)}
+        className={cn('flex items-center gap-1.5 border-none shadow-none', config.className)}
       >
         <Icon className="h-3.5 w-3.5" />
         <span>{config.label}</span>
@@ -190,7 +190,7 @@ export function ConversationControlPanel({
         onValueChange={handleModeChange}
         disabled={isUpdating}
       >
-        <SelectTrigger className="w-[140px] h-8 text-xs">
+        <SelectTrigger className="w-[140px] h-8 text-xs bg-white/80 dark:bg-black/20 border-zinc-200 dark:border-white/10 text-zinc-700 dark:text-zinc-300 focus:ring-0 focus:border-zinc-400 dark:focus:border-white/20 shadow-sm dark:shadow-none">
           {isUpdating ? (
             <div className="flex items-center gap-2">
               <Loader2 className="h-3 w-3 animate-spin" />
@@ -200,20 +200,20 @@ export function ConversationControlPanel({
             <SelectValue placeholder="Select mode" />
           )}
         </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="bot">
+        <SelectContent className="bg-white dark:bg-zinc-900 border-zinc-200 dark:border-white/10">
+          <SelectItem value="bot" className="focus:bg-zinc-100 dark:focus:bg-white/10 text-zinc-700 dark:text-zinc-300 focus:text-zinc-900 dark:focus:text-white">
             <div className="flex items-center gap-2">
               <Bot className="h-4 w-4 text-green-500" />
               <span>Bot Mode</span>
             </div>
           </SelectItem>
-          <SelectItem value="manual">
+          <SelectItem value="manual" className="focus:bg-zinc-100 dark:focus:bg-white/10 text-zinc-700 dark:text-zinc-300 focus:text-zinc-900 dark:focus:text-white">
             <div className="flex items-center gap-2">
               <User className="h-4 w-4 text-orange-500" />
               <span>Manual Mode</span>
             </div>
           </SelectItem>
-          <SelectItem value="hybrid">
+          <SelectItem value="hybrid" className="focus:bg-zinc-100 dark:focus:bg-white/10 text-zinc-700 dark:text-zinc-300 focus:text-zinc-900 dark:focus:text-white">
             <div className="flex items-center gap-2">
               <RefreshCw className="h-4 w-4 text-blue-500" />
               <span>Hybrid Mode</span>
@@ -229,7 +229,7 @@ export function ConversationControlPanel({
           size="sm"
           onClick={handleResumeBot}
           disabled={isUpdating}
-          className="h-8 text-xs"
+          className="h-8 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-500/10"
         >
           {isUpdating ? (
             <Loader2 className="h-3 w-3 animate-spin mr-1" />
@@ -241,7 +241,7 @@ export function ConversationControlPanel({
       )}
 
       {/* Help Text */}
-      <span className="text-xs text-muted-foreground hidden md:inline">
+      <span className="text-xs text-zinc-500 dark:text-zinc-500 hidden md:inline ml-auto italic">
         {controlMode === 'bot' && 'AI handles all responses'}
         {controlMode === 'manual' && 'You handle all responses'}
         {controlMode === 'hybrid' && countdown && `Bot resumes in ${countdown}m`}

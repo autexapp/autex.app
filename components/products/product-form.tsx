@@ -4,8 +4,10 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Loader2, Upload, X, Plus, Trash2 } from 'lucide-react';
+import { Loader2, Upload, X, Plus, Trash2, ImagePlus } from 'lucide-react';
 import Image from 'next/image';
+import { PremiumButton } from '@/components/ui/premium/premium-button';
+import { SmartCard } from '@/components/ui/premium/smart-card';
 import { VariantStockMatrix, VariantStockItem } from './variant-stock-matrix';
 import {
   Dialog,
@@ -44,7 +46,6 @@ const productFormSchema = z.object({
   name: z.string().min(1, 'Product name is required'),
   price: z.string().min(1, 'Price is required'),
   description: z.string().optional(),
-  category: z.string().optional(),
   colors: z.string().optional(),
 });
 
@@ -56,7 +57,6 @@ interface Product {
   price: number;
   stock_quantity: number;
   description?: string | null;
-  category?: string | null;
   image_urls?: string[];
   colors?: string[] | null;
   sizes?: string[] | null;
@@ -74,6 +74,17 @@ interface ProductFormProps {
 // Common sizes for quick add
 const COMMON_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
 
+// Maximum number of images per product
+const MAX_IMAGES = 5;
+
+// Image slot type - either new file or existing URL
+interface ImageSlot {
+  type: 'new' | 'existing';
+  file?: File;
+  preview: string;
+  existingUrl?: string;
+}
+
 export function ProductForm({
   open,
   onOpenChange,
@@ -81,8 +92,8 @@ export function ProductForm({
   onSuccess,
 }: ProductFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  // Multi-image state
+  const [imageSlots, setImageSlots] = useState<ImageSlot[]>([]);
   const [sizeStock, setSizeStock] = useState<SizeStockItem[]>([]);
   const [variantStock, setVariantStock] = useState<VariantStockItem[]>([]);
   const [newSize, setNewSize] = useState('');
@@ -94,7 +105,6 @@ export function ProductForm({
       name: '',
       price: '',
       description: '',
-      category: '',
       colors: '',
     },
   });
@@ -106,11 +116,19 @@ export function ProductForm({
         name: product.name,
         price: product.price.toString(),
         description: product.description || '',
-        category: product.category || '',
         colors: product.colors?.join(', ') || '',
       });
-      setImagePreview(product.image_urls?.[0] || null);
-      setImageFile(null);
+      
+      // Load existing images as ImageSlots
+      if (product.image_urls && product.image_urls.length > 0) {
+        setImageSlots(product.image_urls.map(url => ({
+          type: 'existing' as const,
+          preview: url,
+          existingUrl: url,
+        })));
+      } else {
+        setImageSlots([]);
+      }
       
       // Load size_stock and variant_stock
       if (product.size_stock && product.size_stock.length > 0) {
@@ -124,11 +142,6 @@ export function ProductForm({
       if (product.variant_stock && product.variant_stock.length > 0) {
         setVariantStock(product.variant_stock);
       } else if (product.size_stock && product.size_stock.length > 0) {
-        // Initialize variant stock from size stock
-        // If product has colors, assign stock to first color? Or keep as 'Standard' and let user distribute?
-        // Issue: Matrix won't show 'Standard' if colors are defined.
-        // Solution: If colors exist, assign to the first color by default.
-        
         const defaultColor = product.colors && product.colors.length > 0 
           ? product.colors[0] 
           : 'Standard';
@@ -146,11 +159,9 @@ export function ProductForm({
         name: '',
         price: '',
         description: '',
-        category: '',
         colors: '',
       });
-      setImagePreview(null);
-      setImageFile(null);
+      setImageSlots([]);
       setSizeStock([]);
       setVariantStock([]);
     }
@@ -158,21 +169,37 @@ export function ProductForm({
     setNewQuantity('10');
   }, [product, open, form]);
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setImageFile(file);
+  // Handle adding new image
+  const handleImageAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    
+    // Calculate how many more images we can add
+    const remainingSlots = MAX_IMAGES - imageSlots.length;
+    const filesToAdd = Array.from(files).slice(0, remainingSlots);
+    
+    filesToAdd.forEach(file => {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setImagePreview(reader.result as string);
+        setImageSlots(prev => {
+          if (prev.length >= MAX_IMAGES) return prev;
+          return [...prev, {
+            type: 'new' as const,
+            file,
+            preview: reader.result as string,
+          }];
+        });
       };
       reader.readAsDataURL(file);
-    }
+    });
+    
+    // Reset input value so same file can be selected again
+    e.target.value = '';
   };
 
-  const removeImage = () => {
-    setImageFile(null);
-    setImagePreview(product?.image_urls?.[0] || null);
+  // Remove image at index
+  const removeImage = (index: number) => {
+    setImageSlots(prev => prev.filter((_, i) => i !== index));
   };
 
   // Add a new size-stock entry
@@ -224,7 +251,6 @@ export function ProductForm({
       formData.append('name', values.name);
       formData.append('price', values.price);
       if (values.description) formData.append('description', values.description);
-      if (values.category) formData.append('category', values.category);
       if (values.colors) formData.append('colors', values.colors);
       
       // Process stock data
@@ -266,10 +292,26 @@ export function ProductForm({
         formData.append('variant_stock', '[]');
       }
 
-      if (imageFile) {
-        formData.append('image', imageFile);
-      } else if (!product) {
-        throw new Error('Product image is required');
+      // Handle multiple images
+      const newImageFiles = imageSlots.filter(slot => slot.type === 'new' && slot.file);
+      const existingUrls = imageSlots.filter(slot => slot.type === 'existing').map(slot => slot.existingUrl!);
+      
+      // Append new image files
+      newImageFiles.forEach((slot, index) => {
+        if (slot.file) {
+          formData.append(`image_${index}`, slot.file);
+        }
+      });
+      
+      // Send count of new images
+      formData.append('new_image_count', newImageFiles.length.toString());
+      
+      // Send existing image URLs to preserve
+      formData.append('existing_image_urls', JSON.stringify(existingUrls));
+      
+      // Validate: at least one image required for new products
+      if (imageSlots.length === 0 && !product) {
+        throw new Error('At least one product image is required');
       }
 
       const url = product
@@ -300,10 +342,10 @@ export function ProductForm({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{product ? 'Edit Product' : 'Add Product'}</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-y-auto bg-zinc-950/95 dark:backdrop-blur-xl border-white/10 shadow-2xl p-0 gap-0">
+        <DialogHeader className="p-6 pb-4 border-b border-white/10 bg-white/5">
+          <DialogTitle className="text-xl font-serif tracking-wide text-white">{product ? 'Edit Product' : 'Add Product'}</DialogTitle>
+          <DialogDescription className="text-zinc-400">
             {product
               ? 'Update product details and image'
               : 'Add a new product to your inventory'}
@@ -311,45 +353,65 @@ export function ProductForm({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            {/* Image Upload */}
-            <div className="space-y-2">
-              <FormLabel>Product Image</FormLabel>
-              {imagePreview ? (
-                <div className="relative w-full h-48 rounded-lg overflow-hidden bg-muted">
-                  <Image
-                    src={imagePreview}
-                    alt="Preview"
-                    fill
-                    className="object-contain"
-                  />
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="icon"
-                    className="absolute top-2 right-2"
-                    onClick={removeImage}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : (
-                <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
-                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                    <Upload className="w-10 h-10 mb-3 text-muted-foreground" />
-                    <p className="mb-2 text-sm text-muted-foreground">
-                      <span className="font-semibold">Click to upload</span> or drag and drop
-                    </p>
-                    <p className="text-xs text-muted-foreground">PNG, JPG, WebP (MAX. 5MB)</p>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 p-6">
+            {/* Multi-Image Upload */}
+            <div className="space-y-3">
+              <FormLabel className="text-zinc-400 uppercase text-xs font-bold tracking-wider">
+                Product Images 
+                <span className="text-zinc-600 font-normal ml-1">
+                  ({imageSlots.length}/{MAX_IMAGES})
+                </span>
+              </FormLabel>
+              
+              <div className="grid grid-cols-4 sm:grid-cols-5 gap-3">
+                {/* Existing and new images */}
+                {imageSlots.map((slot, index) => (
+                  <div key={index} className="relative aspect-square rounded-xl overflow-hidden border border-white/10 shadow-sm group">
+                    <Image
+                      src={slot.preview}
+                      alt={`Product ${index + 1}`}
+                      fill
+                      className="object-cover transition-transform duration-500 group-hover:scale-110"
+                    />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon"
+                      className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-all scale-90 group-hover:scale-100 rounded-full"
+                      onClick={() => removeImage(index)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                    {index === 0 && (
+                      <span className="absolute bottom-0 left-0 right-0 text-[9px] font-bold bg-white/90 text-black py-1 text-center uppercase tracking-wider backdrop-blur-md">
+                        Main
+                      </span>
+                    )}
                   </div>
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept="image/*"
-                    onChange={handleImageChange}
-                  />
-                </label>
-              )}
+                ))}
+                
+                {/* Add more button (if under limit) */}
+                {imageSlots.length < MAX_IMAGES && (
+                  <label className="flex flex-col items-center justify-center aspect-square rounded-xl border border-dashed border-white/20 bg-white/5 hover:bg-white/10 hover:border-white/40 cursor-pointer transition-all group">
+                    <div className="p-2 rounded-full bg-white/5 group-hover:scale-110 transition-transform duration-300">
+                       <ImagePlus className="w-5 h-5 text-zinc-400 group-hover:text-white transition-colors" />
+                    </div>
+                    <span className="text-[10px] text-zinc-500 group-hover:text-zinc-300 mt-2 font-medium">Add</span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept="image/*"
+                      multiple
+                      onChange={handleImageAdd}
+                    />
+                  </label>
+                )}
+              </div>
+              
+              <p className="text-xs text-zinc-500">
+                Upload multiple angles for better image recognition (up to {MAX_IMAGES} images)
+              </p>
             </div>
 
             <FormField
@@ -357,9 +419,9 @@ export function ProductForm({
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Product Name</FormLabel>
+                  <FormLabel className="text-zinc-400 uppercase text-xs font-bold tracking-wider">Product Name</FormLabel>
                   <FormControl>
-                    <Input placeholder="Enter product name" {...field} />
+                    <Input placeholder="Enter product name" {...field} className="bg-zinc-900/50 border-white/10 focus:border-white/30 text-white placeholder:text-zinc-700 h-11" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -372,9 +434,9 @@ export function ProductForm({
                 name="price"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Price (৳)</FormLabel>
+                    <FormLabel className="text-zinc-400 uppercase text-xs font-bold tracking-wider">Price (৳)</FormLabel>
                     <FormControl>
-                      <Input type="number" step="0.01" placeholder="0.00" {...field} />
+                      <Input type="number" step="0.01" placeholder="0.00" {...field} className="bg-zinc-900/50 border-white/10 focus:border-white/30 text-white placeholder:text-zinc-700 h-11 font-mono" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -386,11 +448,10 @@ export function ProductForm({
                 name="colors"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Colors (Optional)</FormLabel>
+                    <FormLabel className="text-zinc-400 uppercase text-xs font-bold tracking-wider">Colors (Optional)</FormLabel>
                     <FormControl>
-                      <Input placeholder="Red, Blue, Green" {...field} />
+                      <Input placeholder="Red, Blue, Green" {...field} className="bg-zinc-900/50 border-white/10 focus:border-white/30 text-white placeholder:text-zinc-700 h-11" />
                     </FormControl>
-                    <p className="text-xs text-muted-foreground">Comma separated</p>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -398,24 +459,31 @@ export function ProductForm({
             </div>
 
             {/* Size & Stock Section */}
-            <div className="space-y-3">
-              <FormLabel>Sizes & Stock</FormLabel>
+            <div className="space-y-4 pt-2 border-t border-white/5">
+              <FormLabel className="text-zinc-400 uppercase text-xs font-bold tracking-wider">Sizes & Stock</FormLabel>
               
               {/* Quick add buttons */}
-              <div className="flex flex-wrap gap-1">
-                {COMMON_SIZES.map(size => (
-                  <Button
-                    key={size}
-                    type="button"
-                    variant={sizeStock.some(s => s.size === size) ? "default" : "outline"}
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => quickAddSize(size)}
-                    disabled={sizeStock.some(s => s.size === size)}
-                  >
-                    {size}
-                  </Button>
-                ))}
+              <div className="flex flex-wrap gap-2">
+                {COMMON_SIZES.map(size => {
+                  const isActive = sizeStock.some(s => s.size === size);
+                  return (
+                    <button
+                      key={size}
+                      type="button"
+                      className={`
+                        h-8 px-3 rounded-md text-xs font-bold transition-all duration-300 border
+                        ${isActive 
+                          ? 'bg-white text-black border-white shadow-[0_0_10px_rgba(255,255,255,0.3)]' 
+                          : 'bg-transparent text-zinc-400 border-white/10 hover:border-white/30 hover:text-white hover:bg-white/5'
+                        }
+                      `}
+                      onClick={() => quickAddSize(size)}
+                      disabled={isActive}
+                    >
+                      {size}
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Add custom size */}
@@ -424,14 +492,14 @@ export function ProductForm({
                   placeholder="Custom size (e.g., 42, Free)"
                   value={newSize}
                   onChange={(e) => setNewSize(e.target.value)}
-                  className="max-w-[200px] h-9"
+                  className="bg-zinc-900/50 border-white/10 focus:border-white/30 text-white placeholder:text-zinc-700 h-9"
                   onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addSizeStock())}
                 />
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-9"
+                  className="h-9 border-white/10 text-zinc-300 hover:text-white hover:bg-white/10 bg-white/5"
                   onClick={addSizeStock}
                 >
                   <Plus className="h-4 w-4 mr-2" />
@@ -470,32 +538,6 @@ export function ProductForm({
                 </div>
               )}
             </div>
-
-            <FormField
-              control={form.control}
-              name="category"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Category</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a category" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="Electronics">Electronics</SelectItem>
-                      <SelectItem value="Clothing">Clothing</SelectItem>
-                      <SelectItem value="Food">Food</SelectItem>
-                      <SelectItem value="Books">Books</SelectItem>
-                      <SelectItem value="Home">Home & Garden</SelectItem>
-                      <SelectItem value="Other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
 
             <FormField
               control={form.control}

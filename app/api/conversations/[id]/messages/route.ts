@@ -101,13 +101,17 @@ export async function POST(
         last_message_at: now,
         control_mode: newMode,
         last_manual_reply_at: now,
+        // Clear manual flag when owner responds
+        needs_manual_response: false,
+        manual_flag_reason: null,
+        manual_flagged_at: null,
       })
       .eq('id', conversation.id)
 
     if (updateError) {
       console.error('Error updating conversation:', updateError)
     } else {
-      console.log(`🎛️ [MANUAL MESSAGE] Updated control_mode to: ${newMode}`)
+      console.log(`🎛️ [MANUAL MESSAGE] Updated control_mode to: ${newMode}, cleared manual flag`)
     }
 
     return NextResponse.json({
@@ -118,6 +122,7 @@ export async function POST(
         message_text: text.trim(),
         created_at: new Date().toISOString(),
       },
+      control_mode: newMode,
     })
   } catch (error) {
     console.error('Manual message API error:', error)

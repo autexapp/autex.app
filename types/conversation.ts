@@ -196,6 +196,17 @@ export interface ConversationContext {
   
   /** Selected color from Quick Form parsing */
   selectedColor?: string;
+  
+  // ============================================
+  // FAST LANE ESCALATION (for repeat questions)
+  // ============================================
+  
+  /** 
+   * Recent Fast Lane response categories (e.g., ['delivery', 'payment'])
+   * If user asks same category again, escalate to AI Director
+   * Max 3 items, FIFO queue
+   */
+  lastFastLaneCategories?: string[];
 }
 
 // ============================================

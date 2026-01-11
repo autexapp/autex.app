@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react"
 import { TopBar } from "@/components/dashboard/top-bar"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { SmartCard } from "@/components/ui/premium/smart-card"
+import { PremiumButton } from "@/components/ui/premium/premium-button"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,10 +22,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { User, Facebook, Bell, CreditCard, Save, Loader2, AlertCircle, Trash2, Bot } from "lucide-react"
+import { User, Facebook, Bell, CreditCard, Save, AlertCircle, Trash2, Bot, CheckCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { createClient } from "@/lib/supabase/client"
 import { formatDistanceToNow } from "date-fns"
+import { PremiumLoader } from "@/components/ui/premium/premium-loader"
+import { PaymentModal } from "@/components/dashboard/payment-modal"
+import { useSubscription } from "@/hooks/use-subscription"
+import { cn } from "@/lib/utils"
 
 interface SettingsData {
   user: {
@@ -49,7 +54,6 @@ interface Notification {
   link: string
 }
 
-import { SettingsSkeleton } from "@/components/skeletons/settings-skeleton"
 import { useSearchParams } from "next/navigation"
 
 export default function SettingsPage() {
@@ -176,7 +180,7 @@ export default function SettingsPage() {
   }
 
   if (loading) {
-    return <SettingsSkeleton />
+    return <PremiumLoader />
   }
 
   return (
@@ -207,34 +211,33 @@ export default function SettingsPage() {
           </TabsList>
 
           {/* General Tab */}
-          <TabsContent value="general" className="mt-6">
-            <Card className="bg-card border border-border shadow-sm">
-              <CardHeader>
-                <CardTitle>Business Profile</CardTitle>
-                <CardDescription>
-                  Manage your business information displayed in the dashboard
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl">
-                  <div className="space-y-2">
-                    <Label htmlFor="business-name">
-                      Business Name <span className="text-destructive">*</span>
+          <TabsContent value="general" className="mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <SmartCard variant="static" className="p-8">
+              <div className="mb-8">
+                <h3 className="text-lg font-semibold text-foreground">Business Profile</h3>
+                <p className="text-sm text-muted-foreground">Manage your business information displayed in the dashboard</p>
+              </div>
+              
+              <div className="space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-2xl">
+                  <div className="space-y-3">
+                    <Label htmlFor="business-name" className="text-sm font-medium">
+                      Business Name <span className="text-red-500">*</span>
                     </Label>
                     <Input
                       id="business-name"
                       value={formData.business_name}
                       onChange={(e) => setFormData({ ...formData, business_name: e.target.value })}
                       placeholder="Autex AI"
-                      className="mt-1.5"
+                      className="bg-zinc-50 border-zinc-200 focus:ring-black dark:bg-white/5 dark:border-white/10 dark:focus:ring-white h-11"
                     />
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-[11px] text-zinc-400">
                       Displayed in the dashboard header and profile menu
                     </p>
                   </div>
                   
-                  <div className="space-y-2">
-                    <Label htmlFor="email">
+                  <div className="space-y-3">
+                    <Label htmlFor="email" className="text-sm font-medium">
                       Account Email
                     </Label>
                     <Input
@@ -242,124 +245,211 @@ export default function SettingsPage() {
                       type="email"
                       value={data?.user.email || ""}
                       disabled
-                      className="mt-1.5 bg-muted cursor-not-allowed"
+                      className="bg-zinc-100/50 text-zinc-500 border-zinc-200 dark:bg-white/5 dark:border-white/10 dark:text-zinc-500 cursor-not-allowed h-11"
                     />
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-[11px] text-zinc-400">
                       Used for login, billing, and important notifications
                     </p>
                   </div>
                 </div>
                 
-                <div className="pt-4 border-t max-w-2xl">
-                  <Button onClick={handleSave} disabled={saving || !formData.business_name}>
+                <div className="pt-6 border-t border-dashed border-zinc-200 dark:border-white/10 max-w-2xl">
+                  <PremiumButton 
+                    onClick={handleSave} 
+                    disabled={saving || !formData.business_name}
+                    className="w-full sm:w-auto min-w-[140px]"
+                  >
                     {saving ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      <div className="flex items-center">
+                        <div className="h-4 w-4 rounded-full border-2 border-white/20 border-t-white animate-spin mr-2" />
                         Saving...
-                      </>
+                      </div>
                     ) : (
                       <>
                         <Save className="h-4 w-4 mr-2" />
                         Save Changes
                       </>
                     )}
-                  </Button>
+                  </PremiumButton>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </SmartCard>
           </TabsContent>
 
           {/* Facebook Tab */}
-          <TabsContent value="facebook" className="mt-6">
-            <Card className="bg-card border border-border shadow-sm">
-              <CardHeader>
-                <CardTitle>Facebook Integration</CardTitle>
-                <CardDescription>Connect your Facebook pages for automated messaging</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
+          <TabsContent value="facebook" className="mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <SmartCard variant="static" className="p-8">
+              <div className="mb-8">
+                <h3 className="text-lg font-semibold text-foreground">Facebook Integration</h3>
+                <p className="text-sm text-muted-foreground">Connect your Facebook pages for automated messaging</p>
+              </div>
+              <div className="space-y-6">
                 <FacebookPagesSection />
-              </CardContent>
-            </Card>
+              </div>
+            </SmartCard>
           </TabsContent>
 
           {/* Notifications Tab */}
-          <TabsContent value="notifications" className="mt-6">
-            <Card className="bg-card border border-border shadow-sm">
-              <CardHeader>
-                <CardTitle>Notifications</CardTitle>
-                <CardDescription>Recent alerts and updates</CardDescription>
-              </CardHeader>
-              <CardContent>
+          <TabsContent value="notifications" className="mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <SmartCard variant="static" className="p-8">
+              <div className="mb-8">
+                 <h3 className="text-lg font-semibold text-foreground">Notifications</h3>
+                 <p className="text-sm text-muted-foreground">Recent alerts and updates</p>
+              </div>
+              
+              <div>
                 {notifications.length > 0 ? (
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     {notifications.map((notification) => (
                       <div 
                         key={notification.id} 
-                        className="flex items-start gap-4 p-4 rounded-lg border border-border bg-muted/30"
+                        className="flex items-start gap-4 p-4 rounded-xl border border-zinc-100 dark:border-white/5 bg-zinc-50/50 dark:bg-white/5 hover:bg-zinc-100 dark:hover:bg-white/10 transition-colors"
                       >
-                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                          <Bell className="h-5 w-5 text-primary" />
+                        <div className="h-10 w-10 rounded-xl bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center shrink-0">
+                          <Bell className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                         </div>
                         <div className="flex-1 space-y-1">
                           <div className="flex items-center justify-between">
-                            <p className="font-medium text-sm">{notification.title}</p>
-                            <span className="text-xs text-muted-foreground">{notification.time}</span>
+                            <p className="font-medium text-sm text-zinc-900 dark:text-zinc-100">{notification.title}</p>
+                            <span className="text-[10px] bg-zinc-100 dark:bg-white/10 px-2 py-0.5 rounded-full text-zinc-500">{notification.time}</span>
                           </div>
-                          <p className="text-sm text-muted-foreground">{notification.description}</p>
+                          <p className="text-sm text-zinc-500 dark:text-zinc-400">{notification.description}</p>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="py-12 text-center">
-                    <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-                      <Bell className="h-8 w-8 text-muted-foreground" />
+                  <div className="py-12 text-center rounded-xl border border-dashed border-zinc-200 dark:border-white/10 bg-zinc-50/50 dark:bg-white/5">
+                    <div className="h-16 w-16 rounded-2xl bg-zinc-100 dark:bg-white/10 flex items-center justify-center mx-auto mb-4">
+                      <Bell className="h-8 w-8 text-zinc-400" />
                     </div>
-                    <h3 className="text-lg font-semibold mb-2">No Notifications</h3>
-                    <p className="text-muted-foreground">
+                    <h3 className="text-base font-semibold text-zinc-900 dark:text-white mb-1">No Notifications</h3>
+                    <p className="text-sm text-zinc-500 dark:text-zinc-400 max-w-xs mx-auto">
                       You're all caught up! Connect a Facebook page to receive order alerts.
                     </p>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </SmartCard>
           </TabsContent>
 
 
           {/* Billing Tab */}
-          <TabsContent value="billing" className="mt-6">
-            <Card className="bg-card border border-border shadow-sm">
-              <CardHeader>
-                <CardTitle>Billing & Subscription</CardTitle>
-                <CardDescription>Manage your subscription and billing</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-muted/30">
-                  <div>
-                    <h3 className="text-lg font-bold">
-                      {data?.workspace?.subscription_status === "free_trial" ? "Free Trial" : "Starter"}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {data?.workspace?.subscription_status === "free_trial" 
-                        ? "14 days remaining" 
-                        : "৳499/month"}
-                    </p>
-                  </div>
-                  <Badge variant="secondary">
-                    {data?.workspace?.subscription_status === "free_trial" ? "Trial" : "Active"}
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  Billing management coming soon
-                </p>
-              </CardContent>
-            </Card>
+          <TabsContent value="billing" className="mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <SmartCard variant="static" className="p-8">
+              <div className="mb-8">
+                 <h3 className="text-lg font-semibold text-foreground">Billing & Subscription</h3>
+                 <p className="text-sm text-muted-foreground">Manage your subscription and billing details</p>
+              </div>
+
+                <BillingTab />
+            </SmartCard>
           </TabsContent>
         </Tabs>
       </div>
     </>
   )
 }
+
+function BillingTab() {
+  const { subscription, isLoading: loading, workspaceName } = useSubscription()
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12 w-full relative h-[200px]">
+        <PremiumLoader className="bg-transparent" />
+      </div>
+    )
+  }
+
+  const isTrial = subscription?.status === 'trial'
+  const isExpired = subscription?.status === 'expired'
+  const isPaused = subscription?.isPaused
+
+  return (
+    <>
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-6 rounded-xl border border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-white/5 gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-3">
+               <h3 className="text-xl font-bold text-zinc-900 dark:text-white capitalize">
+                 {isPaused ? 'Subscription Paused' : 
+                  isExpired ? 'Subscription Expired' :
+                  isTrial ? 'Free Trial' : 
+                  subscription?.plan ? `${subscription.plan} Plan` : 'Active Plan'}
+               </h3>
+               <Badge variant={isPaused || isExpired ? "destructive" : "secondary"} className={cn(
+                 "border-none font-semibold",
+                 (isPaused || isExpired) ? "" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400"
+               )}>
+                 {isPaused ? 'Paused' : isExpired ? 'Expired' : 'Active'}
+               </Badge>
+            </div>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              {isPaused ? `Paused by admin: ${subscription?.pausedReason || 'Contact support'}` :
+               isExpired ? 'Renew now to restore bot access.' :
+               isTrial ? `You have ${subscription?.daysRemaining} days remaining on your trial.` : 
+               `Renews on ${subscription?.expiresAt ? new Date(subscription.expiresAt).toLocaleDateString() : 'N/A'}`}
+            </p>
+          </div>
+          
+          <PremiumButton onClick={() => setShowPaymentModal(true)} className="w-full sm:w-auto min-w-[140px]">
+             {isExpired ? 'Renew Now' : 'Manage Subscription'}
+          </PremiumButton>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+           <div className="p-4 rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-900/50">
+              <h4 className="font-medium mb-2">Plan Details</h4>
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                <li className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-emerald-500" />
+                  {isTrial ? '3-Day Free Trial' : subscription?.plan === 'starter' ? 'Starter Features' : subscription?.plan === 'pro' ? 'Pro Features' : 'Business Features'}
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-emerald-500" />
+                  Unlimited Products
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-emerald-500" />
+                  Unlimited Conversations
+                </li>
+              </ul>
+           </div>
+           
+           <div className="p-4 rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-900/50">
+              <h4 className="font-medium mb-2">Usage Summary</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Status</span>
+                  <span className="font-medium">{subscription?.status === 'trial' ? 'Trial' : 'Paid'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Days Left</span>
+                  <span className={cn(
+                    "font-medium",
+                    (subscription?.daysRemaining || 0) <= 3 ? "text-orange-500" : ""
+                  )}>{subscription?.daysRemaining || 0} days</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Total Paid</span>
+                  <span className="font-medium">৳{subscription?.totalPaid || 0}</span>
+                </div>
+              </div>
+           </div>
+        </div>
+      </div>
+      <PaymentModal 
+        open={showPaymentModal} 
+        onOpenChange={setShowPaymentModal}
+        workspaceName={workspaceName || undefined}
+      />
+    </>
+  )
+}
+
+
 
 // Facebook Pages Section Component
 function FacebookPagesSection() {
@@ -544,8 +634,8 @@ function FacebookPagesSection() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="flex items-center justify-center py-12 w-full relative h-[200px]">
+        <PremiumLoader className="bg-transparent" />
       </div>
     )
   }
@@ -579,8 +669,10 @@ function FacebookPagesSection() {
           <Button onClick={handleConnect} disabled={connecting}>
             {connecting ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Connecting...
+                <div className="flex items-center gap-2">
+                  <div className="h-4 w-4 rounded-full border-2 border-zinc-500/20 border-t-zinc-500 animate-spin" />
+                  Connecting...
+                </div>
               </>
             ) : (
               <>
@@ -668,7 +760,7 @@ function FacebookPagesSection() {
                   </div>
                   <div className="flex items-center gap-2">
                     {toggling === page.id && (
-                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      <div className="h-4 w-4 rounded-full border-2 border-zinc-500/20 border-t-zinc-500 animate-spin" />
                     )}
                     <Switch
                       checked={page.bot_enabled}

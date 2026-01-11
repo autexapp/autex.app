@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { ThemeToggle } from "@/components/theme-toggle"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,11 +34,12 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
+import { useWorkspace } from "@/lib/workspace-provider"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 
 interface TopBarProps {
-  title: string
+  title?: string
 }
 
 interface UserData {
@@ -91,10 +93,14 @@ export function TopBar({ title }: TopBarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [userData, setUserData] = useState<UserData | null>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
+  const { needsReplyCount, pendingOrdersCount, loading: workspaceLoading } = useWorkspace()
   const pathname = usePathname()
   const router = useRouter()
   const { toast } = useToast()
+  
+  // Combined count for the bell badge: Actionable Conversations + Unread Notifications
   const unreadCount = notifications.filter((n) => n.unread).length
+  const totalNotifications = needsReplyCount + unreadCount
 
   useEffect(() => {
     fetchData()
@@ -171,14 +177,20 @@ export function TopBar({ title }: TopBarProps) {
           .limit(5)
         
         if (orders) {
-          const formatted: Notification[] = orders.map(order => ({
-            id: order.id,
-            title: "New order received",
-            description: `Order #${order.order_number || 'N/A'} from ${order.customer_name}`,
-            time: formatDistanceToNow(new Date(order.created_at), { addSuffix: true }),
-            unread: false,
-            link: `/dashboard/orders`
-          }))
+          const lastSeenAt = localStorage.getItem('last_seen_order_at')
+          const lastSeenTime = lastSeenAt ? new Date(lastSeenAt).getTime() : 0
+
+          const formatted: Notification[] = orders.map(order => {
+            const orderTime = new Date(order.created_at).getTime()
+            return {
+              id: order.id,
+              title: "New order received",
+              description: `Order #${order.order_number || 'N/A'} from ${order.customer_name}`,
+              time: formatDistanceToNow(new Date(order.created_at), { addSuffix: true }),
+              unread: orderTime > lastSeenTime, // Use persistence for unread state
+              link: `/dashboard/orders`
+            }
+          })
           setNotifications(formatted)
         }
 
@@ -238,32 +250,39 @@ export function TopBar({ title }: TopBarProps) {
   const initials = getInitials(displayName, userData?.email)
 
   return (
-    <header className="sticky top-0 z-40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
-      <div className="flex items-center justify-between h-16 px-4 lg:px-6">
+    <header className="sticky top-0 z-40 w-full border-b border-white/5 bg-background/60 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
+      <div className="flex items-center justify-between h-16 px-6 lg:px-8 max-w-[1600px] mx-auto">
         {/* Left: Mobile menu + Title */}
         <div className="flex items-center gap-4">
           {/* Mobile Menu */}
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
             <SheetTrigger asChild className="lg:hidden">
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" className="-ml-2 text-muted-foreground hover:text-foreground">
                 <Menu className="h-5 w-5" />
                 <span className="sr-only">Open menu</span>
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-72 p-0">
+            <SheetContent side="left" className="w-72 p-0 border-r border-border/50 bg-background/95 backdrop-blur-xl">
               {/* Logo */}
-              <div className="flex items-center gap-2 px-6 py-5 border-b border-border">
-                <Image
-                  src="/Autex logo trasparent (1).png"
-                  alt="Autex Logo"
-                  width={32}
-                  height={32}
-                  className="object-contain"
-                />
-                <span className="text-xl font-semibold">Autex</span>
+              <div className="px-6 py-6 border-b border-border/50">
+                <Link 
+                  href="/dashboard" 
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-3"
+                >
+                  <div className="h-8 w-8 relative rounded-md overflow-hidden">
+                     <Image
+                      src="/autex logo.png"
+                      alt="Autex Logo"
+                      fill
+                      className="object-cover rounded-md"
+                    />
+                  </div>
+                  <span className="text-xl font-serif tracking-tight">Autex AI</span>
+                </Link>
               </div>
               {/* Navigation */}
-              <nav className="flex-1 px-3 py-4 space-y-1">
+              <nav className="flex-1 px-4 py-6 space-y-1">
                 {navigation.map((item) => {
                   const isActive = pathname === item.href
                   return (
@@ -272,47 +291,55 @@ export function TopBar({ title }: TopBarProps) {
                       href={item.href}
                       onClick={() => setMobileMenuOpen(false)}
                       className={cn(
-                        "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                        "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
                         isActive
-                          ? "bg-accent text-accent-foreground"
-                          : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                          ? "bg-primary/10 text-primary shadow-sm"
+                          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                       )}
                     >
-                      <item.icon className="h-5 w-5" />
+                      <item.icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-muted-foreground")} />
                       {item.name}
                     </Link>
                   )
                 })}
               </nav>
               {/* Plan Usage */}
-              <div className="p-4 mx-3 mb-4 rounded-lg bg-accent/50 border border-border">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-medium text-muted-foreground">Plan: Starter</span>
+              <div className="p-4 mx-4 mb-6 rounded-xl bg-gradient-to-br from-muted/50 to-muted/10 border border-white/5">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Starter Plan</span>
+                  <Badge variant="outline" className="text-[10px] h-5 border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/10">PRO</Badge>
                 </div>
-                <div className="mb-2">
-                  <div className="flex items-center justify-between text-xs mb-1">
-                    <span>280/300 screenshots</span>
-                    <span className="text-amber-600 dark:text-amber-400 font-medium">93%</span>
+                <div className="mb-3 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Usage</span>
+                    <span className="font-mono font-medium">93%</span>
                   </div>
-                  <Progress value={93} className="h-2 [&>div]:bg-amber-500" />
+                  <Progress value={93} className="h-1.5 [&>div]:bg-amber-500 bg-amber-500/10" />
                 </div>
-                <Button variant="outline" size="sm" className="w-full text-xs bg-transparent">
+                <Button variant="default" size="sm" className="w-full text-xs h-8 shadow-sm">
                   Upgrade Plan
                 </Button>
+              </div>
+
+              {/* Theme Toggle Footer */}
+              <div className="p-4 border-t border-border/50 flex items-center justify-between">
+                <span className="text-sm font-medium text-muted-foreground">Theme</span>
+                <ThemeToggle />
               </div>
             </SheetContent>
           </Sheet>
 
-          <h1 className="text-lg font-semibold">{title}</h1>
+          {/* Page Title (Hidden on mobile if search is active could be an enhancement) */}
+          <h1 className="text-lg lg:text-xl font-serif tracking-tight text-foreground/90">{title}</h1>
         </div>
 
-        {/* Center: Search */}
-        <div className="hidden md:flex flex-1 max-w-md mx-4">
-          <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        {/* Center: Search (Floating Glass pill) */}
+        <div className="hidden md:flex flex-1 max-w-xl mx-8">
+          <div className="relative w-full group">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors duration-300" />
             <Input 
-              placeholder={pathname.includes('/products') ? "Search products..." : "Search orders..."}
-              className="pl-9 bg-muted/50" 
+              placeholder={pathname.includes('/products') ? "Search products by name, SKU..." : "Search orders by ID, customer..."}
+              className="pl-10 h-10 rounded-full bg-secondary/50 border-transparent focus-visible:bg-background focus-visible:border-primary/20 focus-visible:ring-4 focus-visible:ring-primary/10 transition-all duration-300 shadow-sm hover:bg-secondary/80"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   const query = e.currentTarget.value
@@ -326,90 +353,151 @@ export function TopBar({ title }: TopBarProps) {
                 }
               }}
             />
+            {/* Keyboard shortcut hint */}
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 hidden lg:flex items-center gap-1 opacity-50">
+              <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
+                <span className="text-xs">⌘</span>K
+              </kbd>
+            </div>
           </div>
         </div>
 
         {/* Right: Notifications + Profile */}
-        <div className="flex items-center gap-2">
-          {/* Mobile Search */}
-          <Button variant="ghost" size="icon" className="md:hidden">
+        <div className="flex items-center gap-3">
+          {/* Mobile Search Trigger */}
+          <Button variant="ghost" size="icon" className="md:hidden text-muted-foreground">
             <Search className="h-5 w-5" />
-            <span className="sr-only">Search</span>
           </Button>
 
           {/* Notifications */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="relative">
-                <Bell className="h-5 w-5" />
-                {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center text-xs font-semibold text-primary">
-                    {unreadCount}
+              <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full bg-secondary/50 hover:bg-secondary border border-transparent hover:border-border/50 transition-all duration-300 group">
+                <Bell className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                {totalNotifications > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-orange-600 px-[3px] text-[9px] font-bold text-white ring-2 ring-background transition-transform group-hover:scale-110">
+                    {totalNotifications > 99 ? '99+' : totalNotifications}
                   </span>
                 )}
                 <span className="sr-only">Notifications</span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-80">
-              <DropdownMenuLabel>Notifications</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {notifications.map((notification) => (
-                <DropdownMenuItem 
-                  key={notification.id} 
-                  className="flex flex-col items-start gap-1 p-3 cursor-pointer"
-                  onClick={() => router.push(notification.link)}
-                >
-                  <div className="flex items-center gap-2 w-full">
-                    <span className={cn("font-medium text-sm", notification.unread && "text-primary")}>
-                      {notification.title}
-                    </span>
-                    {notification.unread && <span className="h-2 w-2 rounded-full bg-primary ml-auto" />}
-                  </div>
-                  <span className="text-xs text-muted-foreground">{notification.description}</span>
-                  <span className="text-xs text-muted-foreground">{notification.time}</span>
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-center text-sm text-primary cursor-pointer">
-                View all notifications
-              </DropdownMenuItem>
+            <DropdownMenuContent 
+              align="end" 
+              className="w-[380px] p-0 rounded-xl border-border/60 shadow-xl backdrop-blur-xl bg-background/95"
+              onCloseAutoFocus={(e) => {
+                // Mark all as read when closing the dropdown
+                setNotifications(prev => prev.map(n => ({ ...n, unread: false })))
+                localStorage.setItem('last_seen_order_at', new Date().toISOString())
+              }}
+            >
+              <div className="flex items-center justify-between p-4 border-b border-border/40">
+                <h4 className="font-semibold text-sm">Notifications</h4>
+                {totalNotifications > 0 && <Badge variant="secondary" className="text-xs text-primary bg-primary/10">{totalNotifications} items</Badge>}
+              </div>
+              
+              <div className="max-h-[400px] overflow-y-auto py-1">
+                {needsReplyCount > 0 && (
+                  <DropdownMenuItem 
+                    className="mx-2 my-1 p-3 cursor-pointer bg-orange-50/50 dark:bg-orange-950/20 rounded-lg border border-orange-200/50 dark:border-orange-800/30 focus:bg-orange-100 dark:focus:bg-orange-900/40"
+                    onClick={() => router.push('/dashboard/conversations?filter=needs_reply')}
+                  >
+                    <div className="flex gap-3 w-full">
+                       <div className="h-8 w-8 rounded-full bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center shrink-0 text-orange-600 dark:text-orange-400">
+                         <Bot className="h-4 w-4" />
+                       </div>
+                       <div className="flex-1 space-y-1">
+                         <div className="flex items-center justify-between">
+                           <span className="font-medium text-sm text-foreground">Action Required</span>
+                           <span className="text-[10px] text-muted-foreground">Now</span>
+                         </div>
+                         <p className="text-xs text-muted-foreground leading-relaxed">
+                           <span className="font-semibold text-orange-600 dark:text-orange-400">{needsReplyCount} conversation{needsReplyCount > 1 ? 's' : ''}</span> need your manual attention.
+                         </p>
+                       </div>
+                    </div>
+                  </DropdownMenuItem>
+                )}
+                
+                {notifications.map((notification) => (
+                   <DropdownMenuItem 
+                    key={notification.id} 
+                    className={cn(
+                      "mx-2 my-1 p-3 cursor-pointer rounded-lg focus:bg-secondary/50",
+                      notification.unread && "bg-secondary/30"
+                    )}
+                    onClick={() => router.push(notification.link)}
+                  >
+                    <div className="flex gap-3 w-full">
+                       <div className={cn(
+                         "h-8 w-8 rounded-full flex items-center justify-center shrink-0",
+                         notification.unread ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                       )}>
+                         <ShoppingBag className="h-4 w-4" />
+                       </div>
+                       <div className="flex-1 space-y-1">
+                         <div className="flex items-center justify-between">
+                           <span className={cn("text-sm", notification.unread ? "font-semibold text-foreground" : "font-medium text-muted-foreground")}>{notification.title}</span>
+                           <span className="text-[10px] text-muted-foreground">{notification.time}</span>
+                         </div>
+                         <p className="text-xs text-muted-foreground line-clamp-2">{notification.description}</p>
+                       </div>
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+              </div>
+              
+              <div className="p-2 border-t border-border/40">
+                <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground h-8">
+                  View all activity
+                </Button>
+              </div>
             </DropdownMenuContent>
           </DropdownMenu>
 
           {/* Profile */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="rounded-full">
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src={userData?.avatar_url} alt={displayName} />
-                  <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+              <Button variant="ghost" className="relative h-9 w-9 rounded-full ring-2 ring-transparent hover:ring-border/50 transition-all pl-0 pr-0 overflow-hidden group">
+                <Avatar className="h-9 w-9 transition-transform duration-300 group-hover:scale-105">
+                  <AvatarImage src={userData?.avatar_url} alt={displayName} className="object-cover" />
+                  <AvatarFallback className="bg-gradient-to-br from-zinc-100 to-zinc-200 dark:from-zinc-800 dark:to-zinc-900 text-zinc-900 dark:text-zinc-100 font-medium text-sm border border-zinc-200 dark:border-zinc-700">
                     {initials}
                   </AvatarFallback>
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>
-                <div className="flex flex-col">
-                  <span>{displayName}</span>
-                  <span className="text-xs text-muted-foreground font-normal">{userData?.email || 'Loading...'}</span>
+            <DropdownMenuContent align="end" className="w-60 p-2 rounded-xl border-border/60 shadow-xl backdrop-blur-xl bg-background/95">
+              <div className="flex items-center gap-3 p-2 mb-1">
+                <div className="h-10 w-10 rounded-full overflow-hidden bg-muted">
+                    <Image src={userData?.avatar_url || '/placeholder-avatar.png'} alt="Profile" width={40} height={40} className="object-cover h-full w-full" />
                 </div>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
+                <div className="flex flex-col overflow-hidden">
+                  <span className="font-semibold text-sm truncate">{displayName}</span>
+                  <span className="text-xs text-muted-foreground truncate font-normal">{userData?.email}</span>
+                </div>
+              </div>
+              <DropdownMenuSeparator className="my-1 bg-border/50" />
+              <DropdownMenuItem asChild className="rounded-lg cursor-pointer">
                 <Link href="/dashboard/settings">
-                  <User className="mr-2 h-4 w-4" />
-                  Profile
+                  <User className="mr-2 h-4 w-4 text-muted-foreground" />
+                  Profile Settings
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/dashboard/settings">
-                  <Settings className="mr-2 h-4 w-4" />
-                  Settings
+              <DropdownMenuItem asChild className="rounded-lg cursor-pointer">
+                <Link href="/dashboard/settings?tab=billing">
+                  <BarChart3 className="mr-2 h-4 w-4 text-muted-foreground" />
+                  Billing & Plans
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive cursor-pointer" onClick={handleLogout}>
+               <DropdownMenuItem asChild className="rounded-lg cursor-pointer">
+                <Link href="/help">
+                  <Bot className="mr-2 h-4 w-4 text-muted-foreground" />
+                  Help & Support
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="my-1 bg-border/50" />
+              <DropdownMenuItem className="text-red-600 dark:text-red-400 rounded-lg cursor-pointer focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-950/30" onClick={handleLogout}>
                 <LogOut className="mr-2 h-4 w-4" />
                 Logout
               </DropdownMenuItem>

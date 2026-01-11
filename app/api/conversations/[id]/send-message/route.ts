@@ -203,7 +203,7 @@ export async function POST(
     console.log(`✅ [DASHBOARD SEND] Message sent successfully: ${fbResult.message_id}`)
 
     // ========================================
-    // 6. UPDATE CONVERSATION CONTROL MODE
+    // 6. UPDATE CONVERSATION CONTROL MODE & CLEAR MANUAL FLAG
     // ========================================
     
     const currentMode = conversation.control_mode || 'bot'
@@ -217,10 +217,14 @@ export async function POST(
         last_manual_reply_at: now,
         last_manual_reply_by: user.id,
         last_message_at: now,
+        // Clear manual flag when owner responds
+        needs_manual_response: false,
+        manual_flag_reason: null,
+        manual_flagged_at: null,
       })
       .eq('id', conversationId)
 
-    console.log(`🎛️ [DASHBOARD SEND] Updated control_mode to: ${newMode}`)
+    console.log(`🎛️ [DASHBOARD SEND] Updated control_mode to: ${newMode}, cleared manual flag`)
 
     // ========================================
     // 7. SAVE MESSAGE TO DATABASE

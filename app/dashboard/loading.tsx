@@ -1,5 +1,5 @@
-import { DashboardSkeleton } from "@/components/skeletons/dashboard-skeleton"
+import { PremiumLoader } from "@/components/ui/premium/premium-loader"
 
 export default function DashboardLoading() {
-  return <DashboardSkeleton />
+  return <PremiumLoader />
 }

@@ -46,6 +46,111 @@ export interface ProcessMessageResult {
 }
 
 /**
+ * Available conversation states for UI dropdown
+ * Used by owner to manually override conversation state
+ */
+export const CONVERSATION_STATES = [
+  { value: 'IDLE' as const, label: 'Idle (Reset)', icon: '🔄', clearsCart: true },
+  { value: 'CONFIRMING_PRODUCT' as const, label: 'Confirming Product', icon: '📸', clearsCart: false },
+  { value: 'COLLECTING_NAME' as const, label: 'Collecting Name', icon: '👤', clearsCart: false },
+  { value: 'COLLECTING_PHONE' as const, label: 'Collecting Phone', icon: '📱', clearsCart: false },
+  { value: 'COLLECTING_ADDRESS' as const, label: 'Collecting Address', icon: '📍', clearsCart: false },
+  { value: 'COLLECTING_PAYMENT_DIGITS' as const, label: 'Collecting Payment', icon: '💳', clearsCart: false },
+  { value: 'CONFIRMING_ORDER' as const, label: 'Confirming Order', icon: '✅', clearsCart: false },
+] as const;
+
+/**
+ * Context adjustment when owner manually changes state
+ * Clears appropriate fields based on new state
+ * 
+ * @param currentContext - Current conversation context
+ * @param newState - New state being set
+ * @returns Adjusted context and list of cleared fields
+ */
+export function getContextForStateChange(
+  currentContext: ConversationContext,
+  newState: ConversationState
+): { context: ConversationContext; cleared: string[] } {
+  const cleared: string[] = [];
+  
+  switch (newState) {
+    case 'IDLE':
+      // Clear everything - full reset
+      cleared.push('cart', 'customerName', 'customerPhone', 'customerAddress');
+      return { context: { state: 'IDLE' }, cleared };
+      
+    case 'CONFIRMING_PRODUCT':
+      // Keep cart, clear customer details
+      cleared.push('customerName', 'customerPhone', 'customerAddress');
+      return {
+        context: {
+          state: newState,
+          productId: currentContext.productId,
+          productName: currentContext.productName,
+          productPrice: currentContext.productPrice,
+        },
+        cleared
+      };
+      
+    case 'COLLECTING_NAME':
+      // Keep cart, clear customer details
+      cleared.push('customerName', 'customerPhone', 'customerAddress');
+      return {
+        context: {
+          state: newState,
+          productId: currentContext.productId,
+          productName: currentContext.productName,
+          productPrice: currentContext.productPrice,
+        },
+        cleared
+      };
+      
+    case 'COLLECTING_PHONE':
+      // Keep cart + name, clear phone/address
+      cleared.push('customerPhone', 'customerAddress');
+      return {
+        context: {
+          state: newState,
+          productId: currentContext.productId,
+          productName: currentContext.productName,
+          productPrice: currentContext.productPrice,
+          customerName: currentContext.customerName,
+        },
+        cleared
+      };
+      
+    case 'COLLECTING_ADDRESS':
+      // Keep cart + name + phone, clear address
+      cleared.push('customerAddress');
+      return {
+        context: {
+          state: newState,
+          productId: currentContext.productId,
+          productName: currentContext.productName,
+          productPrice: currentContext.productPrice,
+          customerName: currentContext.customerName,
+          customerPhone: currentContext.customerPhone,
+        },
+        cleared
+      };
+      
+    case 'COLLECTING_PAYMENT_DIGITS':
+    case 'CONFIRMING_ORDER':
+      // Keep everything
+      return {
+        context: { ...currentContext, state: newState },
+        cleared
+      };
+      
+    default:
+      return {
+        context: { ...currentContext, state: newState },
+        cleared
+      };
+  }
+}
+
+/**
  * Main state machine function - PURE LOGIC ONLY
  * Processes incoming messages and manages conversation flow
  * 

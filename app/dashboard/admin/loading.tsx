@@ -1,5 +1,5 @@
-import { AdminSkeleton } from "@/components/skeletons/admin-skeleton"
+import { PremiumLoader } from "@/components/ui/premium/premium-loader"
 
-export default function AdminLoading() {
-  return <AdminSkeleton />
+export default function Loading() {
+  return <PremiumLoader />
 }

@@ -4,7 +4,8 @@ import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { TopBar } from "@/components/dashboard/top-bar"
-import { Card, CardContent } from "@/components/ui/card"
+import { PremiumLoader } from "@/components/ui/premium/premium-loader"
+import { SmartCard } from "@/components/ui/premium/smart-card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -67,13 +68,12 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   cancelled: { label: "Cancelled", className: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" },
 }
 
-import { OrdersSkeleton } from "@/components/skeletons/orders-skeleton"
-
 export default function OrdersPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [orders, setOrders] = useState<Order[]>([])
-  const [loading, setLoading] = useState(true)
+  const [initialLoading, setInitialLoading] = useState(true)
+  const [isFetching, setIsFetching] = useState(false)
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || "")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [dateRange, setDateRange] = useState("all")
@@ -90,9 +90,19 @@ export default function OrdersPage() {
     }
   }, [searchParams])
 
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchOrders()
+    }, 500)
+
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
+  // Fetch when filters change (immediate)
   useEffect(() => {
     fetchOrders()
-  }, [statusFilter, searchQuery, dateRange, currentPage])
+  }, [statusFilter, dateRange, currentPage])
 
   // Real-time subscription
   useEffect(() => {
@@ -124,7 +134,11 @@ export default function OrdersPage() {
   }, [statusFilter])
 
   const fetchOrders = async () => {
-    setLoading(true)
+    // Only set full loading on initial fetch or major filter changes
+    // avoiding it for search to prevent UI flashing
+    // Set fetching state for all requests
+    setIsFetching(true)
+    
     try {
       const params = new URLSearchParams({
         page: currentPage.toString(),
@@ -145,11 +159,20 @@ export default function OrdersPage() {
       console.error('Failed to fetch orders:', error)
       toast.error('Failed to load orders')
     } finally {
-      setLoading(false)
+      setInitialLoading(false)
+      setIsFetching(false)
     }
   }
 
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
+    // 1. Optimistic Update
+    const previousOrders = [...orders]
+    setOrders(prev => prev.map(order => 
+      order.id === orderId ? { ...order, status: newStatus as OrderStatus } : order
+    ))
+
+    const toastId = toast.loading(`Updating order status to ${newStatus}...`)
+
     try {
       const response = await fetch(`/api/orders/${orderId}`, {
         method: 'PATCH',
@@ -158,44 +181,40 @@ export default function OrdersPage() {
       })
 
       if (response.ok) {
-        toast.success(`Order status updated to ${newStatus}`)
-        fetchOrders() // Refresh the list
+        toast.success(`Order marked as ${newStatus}`, { id: toastId })
+        // No need to fetchOrders() immediately if optimistic update was correct
+        // But we can re-fetch just to be safe in background, or let realtime handle it
       } else {
-        toast.error('Failed to update order status')
+        throw new Error('Failed to update')
       }
     } catch (error) {
       console.error('Failed to update order:', error)
-      toast.error('Failed to update order status')
+      toast.error('Failed to update order status', { id: toastId })
+      // Revert on error
+      setOrders(previousOrders)
     }
   }
 
-  if (loading) {
-    return <OrdersSkeleton />
+  if (initialLoading) {
+    return <PremiumLoader />
   }
 
   return (
     <RequireFacebookPage>
       <TopBar title="Orders" />
 
-      <div className="p-4 lg:p-6 space-y-6">
-        {/* Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <h2 className="text-2xl font-semibold">Orders</h2>
-          <Button>
-            <Plus className="h-4 w-4 mr-2" />
-            Create Manual Order
-          </Button>
-        </div>
+      <div className="p-4 lg:p-8 max-w-[1600px] mx-auto space-y-6">
+
 
         {/* Filters */}
-        <Card className="bg-card border border-border shadow-sm">
-          <CardContent className="p-4 space-y-4">
+        <SmartCard className="p-1 overflow-visible" variant="static">
+          <div className="p-4 space-y-4">
             {/* Search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search by Customer Name or Phone..."
-                className="pl-9"
+                className="pl-10 h-11 bg-background/50 border-white/10 focus:border-primary/50 focus:ring-primary/20 transition-all font-sans"
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value)
@@ -210,12 +229,31 @@ export default function OrdersPage() {
                 setStatusFilter(value)
                 setCurrentPage(1)
               }}>
-                <TabsList className="bg-muted/50">
-                  <TabsTrigger value="all">All</TabsTrigger>
-                  <TabsTrigger value="pending">Pending</TabsTrigger>
-                  <TabsTrigger value="processing">Processing</TabsTrigger>
-                  <TabsTrigger value="completed">Completed</TabsTrigger>
-                  <TabsTrigger value="cancelled">Cancelled</TabsTrigger>
+                <TabsList className="bg-transparent p-0 h-auto flex-wrap justify-start gap-2">
+                  <TabsTrigger 
+                    value="all" 
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-primary/20 hover:bg-white/10 hover:border-white/20 transition-all duration-200"
+                  >
+                    All
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="pending" 
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 data-[state=active]:bg-yellow-500/10 data-[state=active]:text-yellow-600 dark:data-[state=active]:text-yellow-400 data-[state=active]:border-yellow-500/20 hover:bg-yellow-500/10 hover:border-yellow-500/20 transition-all duration-200"
+                  >
+                    Pending
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="completed" 
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 data-[state=active]:bg-green-500/10 data-[state=active]:text-green-600 dark:data-[state=active]:text-green-400 data-[state=active]:border-green-500/20 hover:bg-green-500/10 hover:border-green-500/20 transition-all duration-200"
+                  >
+                    Confirmed
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="cancelled" 
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 data-[state=active]:bg-red-500/10 data-[state=active]:text-red-600 dark:data-[state=active]:text-red-400 data-[state=active]:border-red-500/20 hover:bg-red-500/10 hover:border-red-500/20 transition-all duration-200"
+                  >
+                    Cancelled
+                  </TabsTrigger>
                 </TabsList>
               </Tabs>
 
@@ -224,7 +262,7 @@ export default function OrdersPage() {
                   setDateRange(value)
                   setCurrentPage(1)
                 }}>
-                  <SelectTrigger className="w-[140px]">
+                  <SelectTrigger className="w-[140px] bg-background/50 border-white/10">
                     <SelectValue placeholder="Date range" />
                   </SelectTrigger>
                   <SelectContent>
@@ -234,205 +272,226 @@ export default function OrdersPage() {
                     <SelectItem value="month">Last 30 days</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" disabled className="bg-background/50 border-white/10 hover:bg-background/80 opacity-50 cursor-not-allowed">
                   <Download className="h-4 w-4 mr-2" />
-                  Export
+                  Export (Coming Soon)
                 </Button>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </SmartCard>
 
         {/* Empty State */}
-        {!loading && orders.length === 0 && (
-          <Card className="bg-card border border-border shadow-sm">
-            <CardContent className="p-8 text-center">
-              <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No orders found</h3>
-              <p className="text-muted-foreground mb-4">
+        {!initialLoading && orders.length === 0 && !isFetching && (
+          <SmartCard>
+            <div className="p-12 text-center">
+              <div className="relative inline-flex mb-4">
+                <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full" />
+                <div className="relative p-4 bg-background/50 rounded-2xl border border-white/10 shadow-xl">
+                  <Package className="h-10 w-10 text-primary" />
+                </div>
+              </div>
+              <h3 className="text-xl font-serif font-medium mb-2">No orders found</h3>
+              <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
                 {searchQuery || statusFilter !== 'all' 
-                  ? 'Try adjusting your filters'
-                  : 'Orders from your Facebook Messenger will appear here'}
+                  ? 'Try adjusting your filters or search query to find what you re looking for.'
+                  : 'Orders from your Facebook Messenger will appear here automatically.'}
               </p>
-            </CardContent>
-          </Card>
+              {(searchQuery || statusFilter !== 'all') && (
+                <Button variant="outline" onClick={() => { setSearchQuery(""); setStatusFilter("all") }}>
+                  Clear Filters
+                </Button>
+              )}
+            </div>
+          </SmartCard>
         )}
 
         {/* Orders Table - Desktop */}
-        {!loading && orders.length > 0 && (
-          <Card className="bg-card border border-border shadow-sm hidden md:block">
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/50">
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Order ID</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Customer</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Address</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Amount</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Status</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Time</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {orders.map((order) => (
-                      <tr key={order.id} className="hover:bg-muted/50 transition-colors">
-                        <td className="px-4 py-4">
-                          <button
-                            onClick={() => setSelectedOrder(order)}
-                            className="font-mono text-sm text-primary hover:underline"
-                          >
-                            #{order.order_number || order.id.slice(0, 8)}
-                          </button>
-                        </td>
-                        <td className="px-4 py-4">
-                          <p className="font-medium text-sm">{order.customer_name}</p>
-                          <p className="text-xs text-muted-foreground">{order.customer_phone}</p>
-                        </td>
-                        <td className="px-4 py-4">
-                          <p className="text-sm max-w-[200px] truncate">{order.customer_address}</p>
-                        </td>
-                        <td className="px-4 py-4">
-                          <span className="font-mono text-sm font-semibold">৳{order.total_amount?.toLocaleString() || 0}</span>
-                        </td>
-                        <td className="px-4 py-4">
-                          <Badge 
+        {!initialLoading && (orders.length > 0 || isFetching) && (
+          <SmartCard className={cn("hidden md:block overflow-hidden transition-opacity duration-200", isFetching ? "opacity-50 pointer-events-none" : "opacity-100")} variant="static">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-white/5 bg-muted/20">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Order ID</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Customer</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Address</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Amount</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Time</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {orders.map((order) => (
+                    <tr key={order.id} className="group hover:bg-muted/10 transition-colors duration-200">
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() => setSelectedOrder(order)}
+                          className="font-mono text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                        >
+                          #{order.order_number || order.id.slice(0, 8)}
+                        </button>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col">
+                          <span className="font-medium text-sm text-foreground">{order.customer_name}</span>
+                          <span className="text-xs text-muted-foreground">{order.customer_phone}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="text-sm text-muted-foreground max-w-[200px] truncate" title={order.customer_address}>
+                          {order.customer_address || 'No address provided'}
+                        </p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="font-mono text-sm font-bold text-foreground">৳{order.total_amount?.toLocaleString() || 0}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                         <Badge 
                             variant="secondary" 
-                            className={cn("text-xs", statusConfig[order.status]?.className || statusConfig.pending.className)}
+                            className={cn(
+                              "text-[10px] px-2.5 py-0.5 font-bold uppercase tracking-wider shadow-none border transition-colors", 
+                              statusConfig[order.status]?.className || statusConfig.pending.className
+                            )}
                           >
                             {statusConfig[order.status]?.label || order.status}
                           </Badge>
                           {order.payment_status === 'paid' && (
-                            <p className="text-xs text-green-600 dark:text-green-400 mt-1">Payment Verified</p>
+                            <div className="flex items-center gap-1 mt-1.5 text-[10px] font-medium text-emerald-500">
+                              <Check className="h-3 w-3" />
+                              PAID
+                            </div>
                           )}
-                        </td>
-                        <td className="px-4 py-4 text-xs text-muted-foreground">
-                          {formatDistanceToNow(new Date(order.created_at), { addSuffix: true })}
-                        </td>
-                        <td className="px-4 py-4">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => setSelectedOrder(order)}>
-                                <Eye className="h-4 w-4 mr-2" />
-                                View Details
+                      </td>
+                      <td className="px-6 py-4 text-xs text-muted-foreground/80 font-mono">
+                        {formatDistanceToNow(new Date(order.created_at), { addSuffix: true })}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuItem onClick={() => setSelectedOrder(order)}>
+                              <Eye className="h-4 w-4 mr-2" />
+                              View Details
+                            </DropdownMenuItem>
+                            {order.status === 'pending' && (
+                              <DropdownMenuItem onClick={() => updateOrderStatus(order.id, 'completed')}>
+                                <Check className="h-4 w-4 mr-2" />
+                                Mark as Confirmed
                               </DropdownMenuItem>
-                              {order.status === 'pending' && (
-                                <DropdownMenuItem onClick={() => updateOrderStatus(order.id, 'processing')}>
-                                  <Check className="h-4 w-4 mr-2" />
-                                  Mark as Processing
-                                </DropdownMenuItem>
-                              )}
-                              {order.status === 'processing' && (
-                                <DropdownMenuItem onClick={() => updateOrderStatus(order.id, 'completed')}>
-                                  <Package className="h-4 w-4 mr-2" />
-                                  Mark as Completed
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuItem 
-                                onClick={() => {
-                                  if (order.conversation_id) {
-                                    router.push(`/dashboard/conversations?id=${order.conversation_id}`)
-                                  } else {
-                                    toast.error('No conversation found for this order')
-                                  }
-                                }}
-                                disabled={!order.conversation_id}
-                              >
-                                <MessageSquare className="h-4 w-4 mr-2" />
-                                View Conversation
-                              </DropdownMenuItem>
-                              <DropdownMenuItem 
-                                className="text-destructive"
-                                onClick={() => updateOrderStatus(order.id, 'cancelled')}
-                              >
-                                <X className="h-4 w-4 mr-2" />
-                                Cancel Order
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                            )}
+                            <DropdownMenuItem 
+                              onClick={() => {
+                                if (order.conversation_id) {
+                                  router.push(`/dashboard/conversations?id=${order.conversation_id}`)
+                                } else {
+                                  toast.error('No conversation found for this order')
+                                }
+                              }}
+                              disabled={!order.conversation_id}
+                            >
+                              <MessageSquare className="h-4 w-4 mr-2" />
+                              Conversation
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
+                              onClick={() => updateOrderStatus(order.id, 'cancelled')}
+                            >
+                              <X className="h-4 w-4 mr-2" />
+                              Cancel Order
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
-              {/* Pagination */}
-              <div className="flex items-center justify-between px-4 py-3 border-t border-border">
-                <p className="text-sm text-muted-foreground">
-                  Showing {orders.length} of {total} orders
-                </p>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={currentPage === 1}
-                    onClick={() => setCurrentPage((p) => p - 1)}
-                  >
-                    <ChevronLeft className="h-4 w-4 mr-1" />
-                    Previous
-                  </Button>
-                  <span className="text-sm text-muted-foreground">
-                    Page {currentPage} of {totalPages || 1}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={currentPage >= totalPages}
-                    onClick={() => setCurrentPage((p) => p + 1)}
-                  >
-                    Next
-                    <ChevronRight className="h-4 w-4 ml-1" />
-                  </Button>
+            {/* Pagination */}
+            <div className="flex items-center justify-between px-6 py-4 border-t border-white/5 bg-muted/10">
+              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                Showing {orders.length} of {total} orders
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((p) => p - 1)}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <div className="flex items-center gap-1 px-2">
+                   <span className="text-sm font-medium">{currentPage}</span>
+                   <span className="text-muted-foreground text-sm">/</span>
+                   <span className="text-sm text-muted-foreground">{totalPages || 1}</span>
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage((p) => p + 1)}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </SmartCard>
         )}
 
         {/* Orders Cards - Mobile */}
-        {!loading && orders.length > 0 && (
-          <div className="md:hidden space-y-3">
+        {!initialLoading && (orders.length > 0 || isFetching) && (
+          <div className={cn("md:hidden space-y-4 transition-opacity duration-200", isFetching ? "opacity-50 pointer-events-none" : "opacity-100")}>
             {orders.map((order) => (
-              <Card key={order.id} className="bg-card border border-border shadow-sm">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-3">
+              <SmartCard key={order.id} className="overflow-hidden">
+                <div className="p-5">
+                  <div className="flex items-center justify-between mb-4">
                     <button
                       onClick={() => setSelectedOrder(order)}
-                      className="font-mono text-sm text-primary hover:underline"
+                      className="font-mono text-sm font-bold text-primary hover:underline"
                     >
-                      Order #{order.order_number || order.id.slice(0, 8)}
+                      #{order.order_number || order.id.slice(0, 8)}
                     </button>
                     <Badge 
                       variant="secondary" 
-                      className={cn("text-xs", statusConfig[order.status]?.className || statusConfig.pending.className)}
+                      className={cn("text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider", statusConfig[order.status]?.className || statusConfig.pending.className)}
                     >
                       {statusConfig[order.status]?.label || order.status}
                     </Badge>
                   </div>
-                  <div className="space-y-2 border-t border-border pt-3">
-                    <p className="font-medium text-sm">{order.customer_name}</p>
-                    <p className="text-xs text-muted-foreground">{order.customer_phone}</p>
+                  
+                  <div className="flex items-start gap-3 mb-4">
+                    <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center shrink-0">
+                      <span className="text-sm font-bold">{order.customer_name.charAt(0)}</span>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm text-foreground">{order.customer_name}</p>
+                      <p className="text-xs text-muted-foreground">{order.customer_phone}</p>
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{order.customer_address}</p>
+                    </div>
                   </div>
-                  <div className="border-t border-border mt-3 pt-3">
-                    <p className="font-mono text-lg font-semibold">৳{order.total_amount?.toLocaleString() || 0}</p>
-                  </div>
-                  <div className="flex items-center justify-between border-t border-border mt-3 pt-3">
-                    <span className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(order.created_at), { addSuffix: true })}
-                    </span>
-                    <Button variant="outline" size="sm" onClick={() => setSelectedOrder(order)}>
+
+                  <div className="flex items-center justify-between pt-4 border-t border-white/5">
+                    <div>
+                       <span className="block text-xs text-muted-foreground mb-0.5">Total Amount</span>
+                       <span className="font-mono text-base font-bold text-foreground">৳{order.total_amount?.toLocaleString() || 0}</span>
+                    </div>
+                    
+                    <Button variant="outline" size="sm" onClick={() => setSelectedOrder(order)} className="bg-transparent border-white/10">
                       View Details
                     </Button>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </SmartCard>
             ))}
           </div>
         )}

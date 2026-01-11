@@ -1,5 +1,5 @@
-import { AISetupSkeleton } from "@/components/skeletons/ai-setup-skeleton"
+import { PremiumLoader } from "@/components/ui/premium/premium-loader"
 
-export default function AISetupLoading() {
-  return <AISetupSkeleton />
+export default function Loading() {
+  return <PremiumLoader />
 }

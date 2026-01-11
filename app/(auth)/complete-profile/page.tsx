@@ -9,15 +9,11 @@ import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ArrowRight, Building2, Phone } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { AuthLayout } from "@/components/ui/premium/auth-layout"
+import { GlassCard } from "@/components/ui/premium/glass-card"
+import { PremiumButton } from "@/components/ui/premium/premium-button"
 
 const profileSchema = z.object({
   businessName: z.string().min(2, 'Business name must be at least 2 characters'),
@@ -50,7 +46,6 @@ export default function CompleteProfilePage() {
         return;
       }
       
-      // If user already has business_name, redirect to dashboard
       if (user.user_metadata?.business_name) {
         router.push('/dashboard');
         return;
@@ -90,71 +85,87 @@ export default function CompleteProfilePage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md border-border">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-serif text-foreground">
-            Complete Your Profile
-          </CardTitle>
-          <CardDescription className="text-muted-foreground">
-            {userEmail && (
-              <span>Signed in as <strong>{userEmail}</strong>. </span>
-            )}
-            Please provide your business details to continue.
-          </CardDescription>
-        </CardHeader>
-        <form onSubmit={handleSubmit(onSubmit)}>
-          <CardContent className="space-y-4">
+    <AuthLayout>
+      <div className="w-full max-w-md">
+        <GlassCard>
+          {/* Header */}
+          <div className="mb-8 space-y-2 text-center">
+            <h1 className="font-serif text-3xl font-medium tracking-tight text-white/90 sm:text-4xl">
+              Welcome to Autex
+            </h1>
+            <p className="text-sm text-white/50">
+              {userEmail ? (
+                <>Signed in as <span className="text-white/80 font-medium">{userEmail}</span></>
+              ) : (
+                'Complete your profile'
+              )}
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             {error && (
-              <div className="rounded-[0.625rem] bg-destructive/10 p-3 text-sm text-destructive border border-destructive/20">
+              <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-400 text-center animate-in fade-in slide-in-from-top-2">
                 {error}
               </div>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="businessName" className="text-foreground">
-                Business Name
-              </Label>
-              <Input
-                id="businessName"
-                type="text"
-                placeholder="Acme Inc."
-                className="border-border rounded-[0.625rem]"
-                {...register('businessName')}
-              />
-              {errors.businessName && (
-                <p className="text-sm text-destructive">{errors.businessName.message}</p>
-              )}
+            <div className="space-y-4">
+              {/* Business Name Input */}
+              <div className="space-y-1.5">
+                <Label htmlFor="businessName" className="text-xs font-medium uppercase tracking-wider text-white/40">
+                  Business Name
+                </Label>
+                <div className="relative group/input">
+                  <div className="absolute inset-y-0 left-0 flex items-center pl-3 text-white/30 transition-colors group-focus-within/input:text-white/70">
+                    <Building2 className="h-4 w-4" />
+                  </div>
+                  <Input
+                    id="businessName"
+                    type="text"
+                    placeholder="Acme Inc."
+                    className="h-11 border-white/5 bg-black/20 pl-10 text-white placeholder:text-white/20 focus:border-white/20 focus:bg-white/5 focus:ring-0 rounded-lg transition-all duration-300"
+                    {...register('businessName')}
+                  />
+                </div>
+                {errors.businessName && (
+                  <p className="text-xs text-red-400 pl-1">{errors.businessName.message}</p>
+                )}
+              </div>
+
+              {/* Phone Input */}
+              <div className="space-y-1.5">
+                <Label htmlFor="phone" className="text-xs font-medium uppercase tracking-wider text-white/40">
+                  Phone Number
+                </Label>
+                <div className="relative group/input">
+                  <div className="absolute inset-y-0 left-0 flex items-center pl-3 text-white/30 transition-colors group-focus-within/input:text-white/70">
+                    <Phone className="h-4 w-4" />
+                  </div>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    placeholder="01700000000"
+                    className="h-11 border-white/5 bg-black/20 pl-10 text-white placeholder:text-white/20 focus:border-white/20 focus:bg-white/5 focus:ring-0 rounded-lg transition-all duration-300"
+                    {...register('phone')}
+                  />
+                </div>
+                {errors.phone && (
+                  <p className="text-xs text-red-400 pl-1">{errors.phone.message}</p>
+                )}
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="phone" className="text-foreground">
-                Phone Number
-              </Label>
-              <Input
-                id="phone"
-                type="tel"
-                placeholder="01915969330"
-                className="border-border rounded-[0.625rem]"
-                {...register('phone')}
-              />
-              {errors.phone && (
-                <p className="text-sm text-destructive">{errors.phone.message}</p>
-              )}
-            </div>
-          </CardContent>
-          <CardFooter>
-            <Button
+            <PremiumButton
               type="submit"
-              className="w-full rounded-[0.625rem]"
-              disabled={isLoading}
+              loading={isLoading}
+              className="bg-white text-black hover:bg-white/90 hover:shadow-[0_0_20px_-5px_rgba(255,255,255,0.3)] shadow-none"
             >
-              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {isLoading ? 'Saving...' : 'Continue to Dashboard'}
-            </Button>
-          </CardFooter>
-        </form>
-      </Card>
-    </div>
+              <span>Continue to Dashboard</span>
+              <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover/btn:translate-x-1" />
+            </PremiumButton>
+          </form>
+        </GlassCard>
+      </div>
+    </AuthLayout>
   );
 }

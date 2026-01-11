@@ -5,16 +5,35 @@ import { TopBar } from "@/components/dashboard/top-bar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
-import { Search, Send, ArrowLeft, ExternalLink, Loader2 } from "lucide-react"
+import { Search, Send, ArrowLeft, ExternalLink } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { WorkspaceProvider, useWorkspace } from "@/lib/workspace-provider"
 import { RequireFacebookPage } from "@/components/dashboard/require-facebook-page"
 import { ConversationControlPanel } from "@/components/dashboard/conversation-control-panel"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertTriangle, Power } from "lucide-react"
+import { CONVERSATION_STATES } from "@/lib/conversation/state-machine"
+import { PremiumLoader } from "@/components/ui/premium/premium-loader"
 
 type ConversationStatus = "IDLE" | "AWAITING_NAME" | "AWAITING_PHONE" | "AWAITING_ADDRESS" | "ORDER_COMPLETE"
 
@@ -45,6 +64,10 @@ interface Conversation {
   last_manual_reply_at?: string | null
   last_manual_reply_by?: string | null
   bot_pause_until?: string | null
+  // Manual flag fields for AI Director 2.0
+  needs_manual_response?: boolean | null
+  manual_flag_reason?: string | null
+  manual_flagged_at?: string | null
 }
 
 const statusIndicator: Record<string, string> = {
@@ -113,8 +136,6 @@ const getControlModeBadge = (conv: Conversation) => {
   }
 }
 
-import { ConversationsSkeleton } from "@/components/skeletons/conversations-skeleton"
-
 export default function ConversationsPage() {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState("")
@@ -130,8 +151,14 @@ export default function ConversationsPage() {
   const [pageBotEnabled, setPageBotEnabled] = useState<boolean | null>(null)
   const [currentPageId, setCurrentPageId] = useState<string | null>(null)
   const [enablingBot, setEnablingBot] = useState(false)
+  const [changingState, setChangingState] = useState(false) // Loading state for state change
+  const [resetDialogOpen, setResetDialogOpen] = useState(false) // Confirmation dialog for IDLE reset
+  const [pendingState, setPendingState] = useState<string | null>(null) // State waiting for confirmation
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  // Needs Reply filter state
+  const [needsReplyFilter, setNeedsReplyFilter] = useState(false)
+  const { needsReplyCount } = useWorkspace()
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -141,10 +168,20 @@ export default function ConversationsPage() {
     scrollToBottom()
   }, [selectedConversation?.messages, detailLoading])
 
+  // Handle URL query params for filter
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('filter') === 'needs_reply') {
+      setNeedsReplyFilter(true)
+      // Clean up URL
+      window.history.replaceState({}, '', '/dashboard/conversations')
+    }
+  }, [])
+
   useEffect(() => {
     fetchConversations()
     fetchPageBotStatus()
-  }, [statusFilter, searchQuery])
+  }, [statusFilter, searchQuery, needsReplyFilter])
 
   // Polling effect for real-time message updates
   useEffect(() => {
@@ -170,6 +207,7 @@ export default function ConversationsPage() {
       const params = new URLSearchParams()
       if (statusFilter !== "all") params.append("status", statusFilter)
       if (searchQuery) params.append("search", searchQuery)
+      if (needsReplyFilter) params.append("needs_manual_response", "true")
 
       const response = await fetch(`/api/conversations?${params}`)
       if (!response.ok) throw new Error("Failed to fetch conversations")
@@ -177,13 +215,24 @@ export default function ConversationsPage() {
       const data = await response.json()
       const conversationsData = data.conversations || []
       
-
       setConversations(conversationsData)
       
-      // Auto-select first conversation if none selected
-      if (!selectedConversation && conversationsData.length > 0) {
-        handleSelectConversation(conversationsData[0])
+      // Clear selected conversation if list is empty
+      if (conversationsData.length === 0) {
+        setSelectedConversation(null)
+      } 
+      // Check if currently selected conversation is still in the filtered list
+      else if (selectedConversation) {
+        const stillExists = conversationsData.some((conv: Conversation) => conv.id === selectedConversation.id)
+        if (!stillExists) {
+          // Selected conversation is not in current filter, clear selection
+          setSelectedConversation(null)
+          // On mobile, this should arguably go back to list view, but simple null is safer for now
+          setMobileView("list") 
+        }
       }
+      // Do NOT auto-select first conversation
+      // User must manually select a conversation to view details
     } catch (error) {
       console.error("Error fetching conversations:", error)
     } finally {
@@ -227,6 +276,69 @@ export default function ConversationsPage() {
       toast.error('Failed to enable bot')
     } finally {
       setEnablingBot(false)
+    }
+  }
+
+  // Handle manual state change by owner
+  const handleStateChange = async (newState: string) => {
+    if (!selectedConversation) return
+
+    // Show styled confirmation for destructive reset
+    const stateInfo = CONVERSATION_STATES.find(s => s.value === newState)
+    if (stateInfo?.clearsCart) {
+      setPendingState(newState)
+      setResetDialogOpen(true)
+      return // Wait for dialog confirmation
+    }
+
+    // Execute state change directly for non-destructive changes
+    await executeStateChange(newState)
+  }
+
+  // Actually execute the state change (after confirmation if needed)
+  const executeStateChange = async (newState: string) => {
+    if (!selectedConversation) return
+
+    const stateInfo = CONVERSATION_STATES.find(s => s.value === newState)
+    setChangingState(true) // Start loading
+    
+    try {
+      const response = await fetch(`/api/conversations/${selectedConversation.id}/state`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newState }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to change state')
+      }
+
+      const data = await response.json()
+      
+      // Update local state
+      setSelectedConversation(prev => prev ? {
+        ...prev,
+        current_state: newState as ConversationStatus,
+        context: data.conversation.context,
+        needs_manual_response: false,
+        manual_flag_reason: null,
+      } : null)
+
+      // Show success toast with cleared fields info
+      const clearedInfo = data.cleared?.length > 0 
+        ? ` (Cleared: ${data.cleared.join(', ')})` 
+        : ''
+      toast.success(`🔧 State changed to ${stateInfo?.label || newState}${clearedInfo}`)
+
+      // Refresh conversation list
+      fetchConversations()
+    } catch (error: any) {
+      console.error('Error changing state:', error)
+      toast.error(error.message || 'Failed to change state')
+    } finally {
+      setChangingState(false) // End loading
+      setPendingState(null)
     }
   }
 
@@ -316,6 +428,9 @@ export default function ConversationsPage() {
 
       const data = await response.json()
       
+      // Check if this was a flagged conversation - show special toast
+      const wasFlagged = selectedConversation.needs_manual_response
+      
       // Replace optimistic message with real message from server
       setSelectedConversation(prev => {
         if (!prev) return prev
@@ -323,11 +438,29 @@ export default function ConversationsPage() {
           ...prev,
           messages: (prev.messages || []).map(msg => 
             msg.id === tempId ? data.message : msg
-          )
+          ),
+          // Clear the manual flag after owner replied
+          needs_manual_response: false,
+          manual_flag_reason: null,
+          // Update control mode to hybrid
+          control_mode: data.control_mode || 'hybrid',
         }
       })
 
-      toast.success('Message sent successfully')
+      // Show appropriate toast message
+      if (wasFlagged) {
+        toast.success('✅ Message sent! Conversation moved to Hybrid mode (bot paused for 30 min)')
+        // Re-fetch conversations to update the local badge count
+        fetchConversations()
+        // Dispatch event to notify TopBar to refresh its badge
+        window.dispatchEvent(new CustomEvent('needsReplyCountChanged'))
+        // Turn off the needs reply filter so conversation stays visible
+        if (needsReplyFilter) {
+          setNeedsReplyFilter(false)
+        }
+      } else {
+        toast.success('Message sent successfully')
+      }
     } catch (error: any) {
       console.error('Error sending message:', error)
       
@@ -395,7 +528,7 @@ export default function ConversationsPage() {
   }
 
   if (loading) {
-    return <ConversationsSkeleton />
+    return <PremiumLoader />
   }
 
   return (
@@ -417,10 +550,13 @@ export default function ConversationsPage() {
               size="sm"
               onClick={handleEnableBot}
               disabled={enablingBot}
-              className="bg-green-600 hover:bg-green-700 text-white whitespace-nowrap"
+              className="bg-green-600 hover:bg-green-700 text-white whitespace-nowrap relative"
             >
               {enablingBot ? (
-                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Enabling...</>
+                <div className="flex items-center gap-2">
+                  <div className="h-4 w-4 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+                  Enabling...
+                </div>
               ) : (
                 <><Power className="h-4 w-4 mr-2" /> Enable Bot</>
               )}
@@ -431,120 +567,168 @@ export default function ConversationsPage() {
 
       <div className="flex h-[calc(100vh-4rem)]">
         {/* Conversations List - Left Panel */}
+        {/* Conversations List - Left Panel */}
         <div
           className={cn(
-            "w-full lg:w-80 border-r border-border flex flex-col bg-background",
+            "w-full lg:w-[350px] border-r border-zinc-200 dark:border-white/10 flex flex-col bg-zinc-50/50 dark:bg-zinc-950/50 backdrop-blur-xl transition-colors duration-300",
             mobileView === "chat" && "hidden lg:flex",
           )}
         >
-          {/* Search and Filters */}
-          <div className="p-4 border-b border-border space-y-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          {/* Search and Filters - Improved Separation */}
+          <div className="p-4 space-y-3 bg-white dark:bg-zinc-900/20 border-b border-zinc-200 dark:border-white/5 shadow-sm z-10">
+            <div className="relative group">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400 group-focus-within:text-zinc-600 dark:group-focus-within:text-white transition-colors" />
               <Input
                 placeholder="Search chats..."
-                className="pl-9"
+                className="pl-9 bg-zinc-50 dark:bg-black/20 border-zinc-200 dark:border-white/10 focus:border-zinc-400 dark:focus:border-white/20 text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-600 rounded-lg h-10 transition-all shadow-inner dark:shadow-none"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <Tabs value={statusFilter} onValueChange={setStatusFilter}>
-              <TabsList className="w-full bg-muted/50">
-                <TabsTrigger value="all" className="flex-1 text-xs">
-                  All
-                </TabsTrigger>
-                <TabsTrigger value="IDLE" className="flex-1 text-xs">
-                  Idle
-                </TabsTrigger>
-                <TabsTrigger value="AWAITING_NAME" className="flex-1 text-xs">
-                  Pending
-                </TabsTrigger>
-                <TabsTrigger value="ORDER_COMPLETE" className="flex-1 text-xs">
-                  Completed
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
             
-            {/* Control Mode Filter */}
-            <Tabs value={controlModeFilter} onValueChange={setControlModeFilter}>
-              <TabsList className="w-full bg-muted/50">
-                <TabsTrigger value="all" className="flex-1 text-xs">
-                  All Modes
-                </TabsTrigger>
-                <TabsTrigger value="bot" className="flex-1 text-xs">
-                  🤖 Bot
-                </TabsTrigger>
-                <TabsTrigger value="manual" className="flex-1 text-xs">
-                  👨‍💼 Manual
-                </TabsTrigger>
-                <TabsTrigger value="hybrid" className="flex-1 text-xs">
-                  🔄 Hybrid
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
+             <div className="flex gap-1 bg-zinc-100 dark:bg-black/20 p-1 rounded-lg border border-zinc-200 dark:border-white/5">
+               {['all', 'IDLE', 'AWAITING_NAME', 'ORDER_COMPLETE'].map(status => (
+                  <button
+                    key={status}
+                    onClick={() => setStatusFilter(status)}
+                    className={cn(
+                      "flex-1 py-1.5 text-[10px] font-medium rounded-md uppercase tracking-wide transition-all",
+                      statusFilter === status 
+                        ? "bg-white text-zinc-900 shadow-sm border border-zinc-200 dark:bg-white/10 dark:text-white dark:shadow-sm dark:border-white/5" 
+                        : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-white/5"
+                    )}
+                  >
+                    {status === 'all' ? 'All' : statusLabels[status] || status}
+                  </button>
+               ))}
+            </div>
+            
+            {/* Control Mode Filter & Needs Reply */}
+            <div className="flex gap-2">
+               <div className="flex-1 flex gap-1 bg-zinc-200/50 dark:bg-black/20 p-1 rounded-lg border border-zinc-200 dark:border-white/5 overflow-x-auto [&::-webkit-scrollbar]:hidden">
+                 {['all', 'bot', 'manual', 'hybrid'].map(mode => (
+                    <button
+                      key={mode}
+                      onClick={() => setControlModeFilter(mode)}
+                      className={cn(
+                        "flex-1 items-center justify-center py-1.5 px-0.5 text-[9px] font-bold rounded-md uppercase tracking-tight transition-all whitespace-nowrap",
+                        controlModeFilter === mode 
+                          ? "bg-white text-zinc-900 shadow-sm border border-zinc-200 dark:bg-white/10 dark:text-white dark:border-white/5" 
+                          : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300 hover:bg-white/50 dark:hover:bg-white/5"
+                      )}
+                    >
+                      {mode === 'all' ? 'All' : mode.charAt(0).toUpperCase() + mode.slice(1)}
+                    </button>
+                 ))}
+               </div>
+
+                <Button
+                  variant={needsReplyFilter ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setNeedsReplyFilter(!needsReplyFilter)}
+                  className={cn(
+                    "flex-shrink-0 px-3 h-9 border-none font-bold text-xs tracking-wide transition-all",
+                    needsReplyFilter 
+                      ? "bg-orange-500 text-white shadow-lg shadow-orange-500/20" 
+                      : "bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20 dark:hover:bg-orange-500/20"
+                  )}
+                >
+                  <span className="hidden sm:inline">Needs Reply</span>
+                  <span className="sm:hidden">Reply</span>
+                  {needsReplyCount > 0 && (
+                    <span className={cn(
+                      "ml-1.5 px-1.5 py-0.5 text-[9px] rounded-full font-bold",
+                      needsReplyFilter ? "bg-white/20 text-white" : "bg-orange-200 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400"
+                    )}>
+                      {needsReplyCount}
+                    </span>
+                  )}
+                </Button>
+            </div>
           </div>
 
           {/* Conversation List */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1 [&::-webkit-scrollbar-thumb]:bg-zinc-300 dark:[&::-webkit-scrollbar-thumb]:bg-zinc-700">
             {conversations.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-8 text-center">
-                <p className="text-sm text-muted-foreground">No conversations found</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Conversations will appear here when customers message your Facebook page
+              <div className="flex flex-col items-center justify-center p-8 text-center h-full opacity-50">
+                <div className="w-16 h-16 rounded-2xl bg-zinc-100 dark:bg-white/5 flex items-center justify-center mb-4">
+                   <Search className="w-6 h-6 text-zinc-400 dark:text-white/20" />
+                </div>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 font-medium">No conversations found</p>
+                <p className="text-xs text-zinc-400 dark:text-zinc-600 mt-1 max-w-[200px]">
+                  Adjust filters or wait for new messages
                 </p>
               </div>
             ) : (
-              <div className="divide-y divide-border">
+              <div>
                 {conversations
                   .filter(conv => controlModeFilter === 'all' || (conv.control_mode || 'bot') === controlModeFilter)
                   .map((conv) => {
                     const badge = getControlModeBadge(conv)
+                    const isSelected = selectedConversation?.id === conv.id;
                     return (
-                      <button
-                        key={conv.id}
-                        onClick={() => handleSelectConversation(conv)}
-                        className={cn(
-                          "w-full p-4 text-left hover:bg-muted/50 transition-colors relative",
-                          selectedConversation?.id === conv.id && "bg-sidebar-accent",
-                          badge.needsAttention && "border-l-2 border-l-orange-500",
-                        )}
-                      >
-                        <div className="flex items-start gap-3">
-                          <Avatar className="h-10 w-10">
-                            <AvatarImage src={conv.customer_profile_pic_url || undefined} alt={conv.customer_name} />
-                            <AvatarFallback className="bg-primary text-primary-foreground text-sm">
-                              {(conv.customer_name || 'U').substring(0, 2).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0">
+                        <button
+                          key={conv.id}
+                          onClick={() => handleSelectConversation(conv)}
+                          className={cn(
+                            "w-full p-3 text-left transition-all duration-300 rounded-xl border group relative overflow-hidden cursor-pointer",
+                            isSelected 
+                              ? "bg-white border-zinc-200/60 shadow-[0_2px_12px_rgba(0,0,0,0.08)] dark:bg-white/10 dark:border-white/10 dark:shadow-[0_4px_20px_rgba(0,0,0,0.5)]" 
+                              : "bg-transparent border-transparent hover:bg-white hover:border-zinc-200/50 hover:shadow-sm dark:hover:bg-white/5 dark:hover:border-white/5"
+                          )}
+                        >
+                         {/* Selection Glow Indicator - Refined for Light Mode */}
+                         {isSelected && <div className="absolute left-0 top-0 bottom-0 w-1 bg-zinc-900 shadow-[0_0_10px_rgba(0,0,0,0.2)] dark:bg-white dark:shadow-[0_0_10px_white]" />}
+
+                        <div className="flex items-start gap-3 pl-2">
+                          <div className="relative">
+                            <Avatar className={cn("h-11 w-11 border-2 shadow-sm transition-colors", isSelected ? "border-zinc-200 dark:border-white" : "border-zinc-100 dark:border-white/10")}>
+                              <AvatarImage src={conv.customer_profile_pic_url || undefined} alt={conv.customer_name} />
+                              <AvatarFallback className="bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-200 text-sm font-bold">
+                                {(conv.customer_name || 'U').substring(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            {/* Status Dot */}
+                            <div className={cn(
+                                "absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-white dark:border-[#121212]",
+                                statusIndicator[conv.current_state] || "bg-zinc-500"
+                            )} />
+                          </div>
+
+                          <div className="flex-1 min-w-0 pt-0.5">
                             <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className="font-medium text-sm truncate">
-                                  {conv.customer_name || "Unknown Customer"}
-                                </span>
-                                {/* Control Mode Badge */}
-                                <span className={cn(
-                                  "text-[10px] px-1.5 py-0.5 rounded flex-shrink-0",
-                                  badge.className
-                                )}>
-                                  {badge.icon} {badge.label}
-                                </span>
-                              </div>
-                              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                              <span className={cn("font-bold text-sm truncate", isSelected ? "text-zinc-900 dark:text-white" : "text-zinc-700 dark:text-zinc-300 group-hover:text-zinc-900 dark:group-hover:text-white")}>
+                                {conv.customer_name || "Unknown Customer"}
+                              </span>
+                              <span className={cn("text-[10px] whitespace-nowrap font-medium", isSelected ? "text-zinc-500 dark:text-zinc-400" : "text-zinc-400 dark:text-zinc-600")}>
                                 {formatTime(conv.last_message_at)}
                               </span>
                             </div>
-                            <div className="flex items-center gap-2 mt-1">
-                              <div className={cn("h-2 w-2 rounded-full flex-shrink-0", statusIndicator[conv.current_state] || "bg-muted-foreground/30")} />
-                              <p className="text-xs text-muted-foreground truncate">
+                            
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <p className={cn("text-xs truncate max-w-[140px]", isSelected ? "text-zinc-600 dark:text-zinc-400" : "text-zinc-500")}>
+                                {conv.last_message?.sender === 'page' || conv.last_message?.sender_type === 'bot' ? 'You: ' : ''}
                                 {conv.last_message?.message_text || "No messages"}
                               </p>
+                              
+                              {/* Control Mode Mini Badge */}
+                              <span className={cn(
+                                  "ml-auto text-[9px] px-1.5 py-[1px] rounded flex-shrink-0 uppercase tracking-wider font-bold border",
+                                  badge.className.replace('bg-', 'bg-transparent text-').replace('border-', 'border-')
+                                )}>
+                                  {badge.label.split(' ')[0]}
+                              </span>
                             </div>
-                            {/* Needs Attention indicator */}
-                            {badge.needsAttention && (
-                              <div className="flex items-center gap-1 mt-1">
-                                <span className="text-[10px] text-orange-600 dark:text-orange-400 font-medium">
-                                  ⚠️ Needs your reply
+
+                            {/* Alert Indicators */}
+                            {(badge.needsAttention || conv.needs_manual_response) && (
+                              <div className="flex items-center gap-1 mt-1.5 animate-pulse">
+                                <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1 border",
+                                    isSelected 
+                                    ? "bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-500/20 dark:text-orange-200 dark:border-orange-500/30" 
+                                    : "bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20"
+                                )}>
+                                   <AlertTriangle className="w-2.5 h-2.5" /> Action Required
                                 </span>
                               </div>
                             )}
@@ -559,49 +743,112 @@ export default function ConversationsPage() {
         </div>
 
         {/* Chat Panel - Right Panel */}
-        <div className={cn("flex-1 flex flex-col bg-background h-full overflow-hidden", mobileView === "list" && "hidden lg:flex")}>
+        <div className={cn("flex-1 flex flex-col bg-zinc-50/50 dark:bg-[#050505] h-full overflow-hidden relative", mobileView === "list" && "hidden lg:flex")}>
+          {/* Loading Overlay */}
+          {(detailLoading || (!selectedConversation && loading)) && (
+            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-white/80 dark:bg-black/80 backdrop-blur-sm transition-all duration-300">
+               <div className="bg-white dark:bg-zinc-900 px-8 py-10 rounded-2xl shadow-2xl flex flex-col items-center gap-6 border border-zinc-100 dark:border-white/10 relative overflow-hidden min-w-[300px]">
+                 <PremiumLoader className="bg-transparent" />
+               </div>
+            </div>
+          )}
+
           {selectedConversation ? (
             <>
+              {/* Background Gradient Effect */}
+              <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-[0.03] dark:opacity-[0.02]" />
+              <div className="absolute inset-0 bg-gradient-to-b from-white/40 to-white/0 dark:from-zinc-900/10 dark:to-black pointer-events-none" />
+
               {/* Chat Header */}
-              <div className="p-4 border-b border-border flex items-center gap-4 shrink-0 bg-background z-10">
-                <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileView("list")}>
+              <div className="p-4 flex items-center gap-4 shrink-0 z-10 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md border-b border-zinc-200 dark:border-white/5 shadow-sm">
+                <Button variant="ghost" size="icon" className="lg:hidden text-zinc-500 dark:text-zinc-400" onClick={() => setMobileView("list")}>
                   <ArrowLeft className="h-5 w-5" />
                 </Button>
-                <Avatar className="h-10 w-10">
-                  <AvatarImage 
-                    src={selectedConversation.customer_profile_pic_url || undefined} 
-                    alt={selectedConversation.customer_name} 
-                  />
-                  <AvatarFallback className="bg-primary text-primary-foreground">
-                    {(selectedConversation.customer_name || 'U').substring(0, 2).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1">
+                
+                <div className="relative">
+                  <Avatar className="h-10 w-10 border border-zinc-200 dark:border-white/10 shadow-inner">
+                    <AvatarImage 
+                      src={selectedConversation.customer_profile_pic_url || undefined} 
+                      alt={selectedConversation.customer_name} 
+                    />
+                    <AvatarFallback className="bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 font-bold">
+                      {(selectedConversation.customer_name || 'U').substring(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className={cn(
+                      "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white dark:border-[#121212]",
+                      statusIndicator[selectedConversation.current_state] || "bg-zinc-500"
+                  )} />
+                </div>
+
+                <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-semibold">
+                    <h3 className="font-bold text-lg text-zinc-900 dark:text-white tracking-tight truncate">
                       {selectedConversation.customer_name || "Unknown Customer"}
                     </h3>
                     {pageBotEnabled === false && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">
-                        🛑 Bot Disabled
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 dark:text-red-400 border border-red-500/20 font-bold uppercase tracking-wider whitespace-nowrap">
+                        Bot Disabled
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {statusLabels[selectedConversation.current_state] || selectedConversation.current_state}
-                  </p>
+                  {/* State Dropdown - Manual Override */}
+                  <Select
+                    value={selectedConversation.current_state}
+                    onValueChange={handleStateChange}
+                    disabled={changingState}
+                  >
+                    <SelectTrigger className="w-auto min-w-[140px] h-6 text-[10px] border-none bg-transparent p-0 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition-colors uppercase tracking-widest font-bold focus:ring-0 justify-start">
+                      {changingState ? (
+                        <span className="flex items-center gap-2">
+                          <div className="h-3 w-3 rounded-full border-2 border-zinc-500/20 border-t-zinc-500 animate-spin" />
+                          UPDATING...
+                        </span>
+                      ) : (
+                        <SelectValue>
+                          {(() => {
+                            const state = CONVERSATION_STATES.find(s => s.value === selectedConversation.current_state)
+                            return state ? `${state.icon} ${state.label}` : selectedConversation.current_state
+                          })()}
+                        </SelectValue>
+                      )}
+                    </SelectTrigger>
+                    <SelectContent className="bg-white dark:bg-zinc-900 border-zinc-200 dark:border-white/10">
+                      {CONVERSATION_STATES.map((state) => (
+                        <SelectItem key={state.value} value={state.value} className="focus:bg-zinc-100 dark:focus:bg-white/10 text-zinc-700 dark:text-zinc-300 focus:text-zinc-900 dark:focus:text-white">
+                          {state.icon} {state.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 {getOrderIdFromContext(selectedConversation.context) && (
                   <Button 
                     variant="outline" 
                     size="sm"
+                    className="bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20 dark:hover:bg-emerald-500/20"
                     onClick={() => router.push(`/dashboard/orders`)}
                   >
-                    <ExternalLink className="h-4 w-4 mr-2" />
+                    <ExternalLink className="h-3 w-3 mr-2" />
                     View Order
                   </Button>
                 )}
               </div>
+
+              {/* Manual Flag Banner */}
+              {selectedConversation.needs_manual_response && (
+                <Alert className="mx-4 mt-2 border-orange-200 bg-orange-50 dark:bg-orange-900/20 dark:border-orange-800">
+                  <AlertTriangle className="h-4 w-4 text-orange-600 dark:text-orange-500" />
+                  <AlertDescription className="text-sm">
+                    <span className="font-semibold text-orange-800 dark:text-orange-400">
+                      🔴 AI Flagged This Conversation
+                    </span>
+                    <p className="text-orange-700 dark:text-orange-300 mt-0.5">
+                      {selectedConversation.manual_flag_reason || 'The AI could not answer this question. Please reply manually.'}
+                    </p>
+                  </AlertDescription>
+                </Alert>
+              )}
 
               {/* Control Panel */}
               <ConversationControlPanel 
@@ -616,35 +863,53 @@ export default function ConversationsPage() {
                 }}
               />
 
-              {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* Messages Container */}
+              <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                 {detailLoading ? (
-                  <div className="flex items-center justify-center h-full">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  <div className="flex items-center justify-center h-full w-full relative min-h-[100px]">
+                    <PremiumLoader className="bg-transparent" />
                   </div>
                 ) : (
-                  <div className="flex flex-col justify-end min-h-full">
-                    <div className="space-y-4">
+                  <div className="flex flex-col justify-end min-h-full pb-32">
+                    <div className="space-y-6">
                       {selectedConversation.messages && selectedConversation.messages.length > 0 ? (
-                        selectedConversation.messages.map((message) => (
+                        selectedConversation.messages.map((message) => {
+                          const isRight = isRightAligned(message);
+                          const senderLabel = getSenderLabel(message);
+                          const isBot = senderLabel.includes("Bot");
+                          const isOwner = senderLabel.includes("You");
+                          
+                          return (
                           <div
                             key={message.id}
-                            className={cn("flex flex-col", isRightAligned(message) ? "items-end" : "items-start")}
+                            className={cn("flex flex-col group", isRight ? "items-end" : "items-start")}
                           >
-                            <div className="flex items-center gap-1.5 mb-1 px-1">
-                              <span className="text-[10px] text-muted-foreground">
-                                {getSenderLabel(message)}
+                            <div className={cn("flex items-center gap-2 mb-1 px-1 opacity-60 group-hover:opacity-100 transition-opacity", isRight ? "flex-row-reverse" : "")}>
+                              <span className={cn("text-[10px] font-bold tracking-wider uppercase", isRight ? "text-zinc-400 dark:text-zinc-500" : "text-zinc-500")}>
+                                {isBot ? '🤖 AI Assistant' : isOwner ? '👨‍💼 You' : selectedConversation.customer_name}
+                              </span>
+                              <span className="text-[9px] text-zinc-400 dark:text-zinc-600">
+                                {formatMessageTime(message.created_at)}
                               </span>
                               {showMessengerBadge(message) && (
-                                <span className="text-[9px] bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">
-                                  via Messenger
+                                <span className="text-[9px] bg-[#0084FF]/10 text-[#0084FF] px-1.5 py-[1px] rounded flex items-center gap-1 font-bold">
+                                  Messenger
                                 </span>
                               )}
                             </div>
+                            
                             <div
                               className={cn(
-                                "max-w-[70%] rounded-lg px-4 py-2",
-                                getSenderBgColor(message),
+                                "max-w-[75%] rounded-2xl px-5 py-3 shadow-sm text-sm relative transition-all duration-200",
+                                // Style Logic Refined for Both Modes:
+                                isBot ? 
+                                  // Bot:
+                                  "bg-white dark:bg-white text-zinc-900 dark:text-black rounded-tl-sm border border-zinc-200 dark:border-transparent shadow-[0_2px_8px_rgba(0,0,0,0.05)] dark:shadow-[0_0_15px_rgba(255,255,255,0.1)]" : 
+                                isOwner ? 
+                                  // Owner (You):
+                                  "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-900 dark:text-emerald-100 border border-emerald-100 dark:border-emerald-500/20 rounded-tr-sm" :
+                                  // Customer (User):
+                                  "bg-zinc-100 dark:bg-zinc-800/80 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-white/5 rounded-tl-sm backdrop-blur-md"
                               )}
                             >
                               {/* Render image attachments */}
@@ -658,14 +923,13 @@ export default function ConversationsPage() {
                                         href={att.payload.url} 
                                         target="_blank" 
                                         rel="noopener noreferrer"
-                                        className="block"
+                                        className="block group/img overflow-hidden rounded-lg"
                                       >
                                         <img 
                                           src={att.payload.url} 
                                           alt={`Attachment ${idx + 1}`}
-                                          className="max-w-full max-h-64 rounded-md object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                                          className="max-w-full max-h-64 object-contain transition-transform duration-500 group-hover/img:scale-105"
                                           onError={(e) => {
-                                            // Hide broken images
                                             (e.target as HTMLImageElement).style.display = 'none'
                                           }}
                                         />
@@ -674,26 +938,27 @@ export default function ConversationsPage() {
                                   }
                                 </div>
                               )}
+                              
                               {/* Render text message */}
                               {message.message_text && (
-                                <p className="text-sm whitespace-pre-line">{message.message_text}</p>
+                                <p className={cn("leading-relaxed whitespace-pre-line", isBot ? "font-medium" : "font-normal")}>
+                                  {message.message_text}
+                                </p>
                               )}
-                              {/* Show placeholder if no text and no valid attachments */}
-                              {!message.message_text && (!message.attachments || message.attachments.length === 0) && (
-                                <p className="text-sm text-muted-foreground italic">[Empty message]</p>
+                              
+                              {/* Status Indicators for Send */}
+                              {message.id.startsWith('temp-') && (
+                                <span className="absolute bottom-1 right-2 w-2 h-2 rounded-full border-2 border-current border-t-transparent animate-spin opacity-50" />
                               )}
-                              <p className="text-[10px] text-muted-foreground mt-1">
-                                {formatMessageTime(message.created_at)}
-                                {message.id.startsWith('temp-') && (
-                                  <span className="ml-2 italic">Sending...</span>
-                                )}
-                              </p>
                             </div>
                           </div>
-                        ))
+                        )})
                       ) : (
-                        <div className="flex items-center justify-center h-full text-muted-foreground text-sm py-10">
-                          No messages in this conversation
+                        <div className="flex flex-col items-center justify-center py-20 opacity-40">
+                          <div className="w-20 h-20 rounded-full bg-zinc-100 dark:bg-white/5 flex items-center justify-center mb-4">
+                             <div className="w-3 h-3 bg-zinc-300 dark:bg-white rounded-full animate-bounce" />
+                          </div>
+                          <p className="text-zinc-500 text-sm">No messages yet. Start the conversation!</p>
                         </div>
                       )}
 
@@ -713,43 +978,54 @@ export default function ConversationsPage() {
                 )}
               </div>
 
-              {/* Chat Input - Manual Messaging */}
-              <div className="p-4 border-t border-border">
-                <form onSubmit={handleSendMessage} className="flex gap-2">
-                  <Input
-                    placeholder="Type your message..."
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    className="flex-1"
-                    disabled={sendingMessage}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault()
-                        handleSendMessage(e)
-                      }
-                    }}
-                  />
-                  <Button 
-                    type="submit" 
-                    size="icon" 
-                    disabled={sendingMessage || !newMessage.trim()}
-                  >
-                    {sendingMessage ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Send className="h-4 w-4" />
-                    )}
-                  </Button>
-                </form>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Messages are sent directly to the customer via Facebook Messenger. Press Enter to send.
+              {/* Chat Input - Floating Capsule (Fixed at bottom) */}
+              <div className="p-4 bg-gradient-to-t from-white via-white/80 to-transparent dark:from-black dark:via-black/80 dark:to-transparent absolute bottom-0 left-0 right-0 z-20">
+                <div className="max-w-3xl mx-auto bg-white/90 dark:bg-zinc-900/90 backdrop-blur-xl border border-zinc-200 dark:border-white/10 rounded-full p-2 shadow-2xl shadow-zinc-200/50 dark:shadow-black/50 flex items-center gap-2 relative">
+                   <form onSubmit={handleSendMessage} className="flex-1 flex gap-2">
+                    <Input
+                      placeholder="Type a message..."
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      className="flex-1 bg-transparent border-none text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-500 focus-visible:ring-0 focus-visible:ring-offset-0 px-4 h-10"
+                      disabled={sendingMessage}
+                      autoComplete="off"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault()
+                          handleSendMessage(e)
+                        }
+                      }}
+                    />
+                    <Button 
+                      type="submit" 
+                      size="icon" 
+                      className={cn(
+                        "h-10 w-10 rounded-full transition-all duration-300 shadow-md",
+                        newMessage.trim() 
+                          ? "bg-zinc-900 dark:bg-white text-white dark:text-black hover:bg-black dark:hover:bg-white/90 scale-100" 
+                          : "bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500 scale-90"
+                      )}
+                      disabled={sendingMessage || !newMessage.trim()}
+                    >
+                      {sendingMessage ? (
+                        <div className="h-4 w-4 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </form>
+                </div>
+                <p className="text-[10px] text-zinc-400 dark:text-zinc-600 text-center mt-2 opacity-70">
+                   Press Enter to send via Messenger
                 </p>
               </div>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground">
+            <div className="flex-1 flex items-center justify-center text-muted-foreground bg-white dark:bg-[#050505]">
               {loading ? (
-                <Loader2 className="h-6 w-6 animate-spin" />
+                <div className="relative h-12 w-full">
+                  <PremiumLoader className="bg-transparent" />
+                </div>
               ) : (
                 "Select a conversation to view messages"
               )}
@@ -757,6 +1033,44 @@ export default function ConversationsPage() {
           )}
         </div>
       </div>
+
+      {/* Reset State Confirmation Dialog */}
+      <AlertDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-orange-500" />
+              Reset Conversation?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-left">
+              This will clear:
+              <ul className="list-disc list-inside mt-2 space-y-1 text-sm">
+                <li>🛒 Cart items</li>
+                <li>👤 Customer name</li>
+                <li>📱 Phone number</li>
+                <li>📍 Address</li>
+              </ul>
+              <p className="mt-3 font-medium">
+                The customer will need to start their order from scratch.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingState(null)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setResetDialogOpen(false)
+                if (pendingState) executeStateChange(pendingState)
+              }}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              Reset to Idle
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </RequireFacebookPage>
   )
 }

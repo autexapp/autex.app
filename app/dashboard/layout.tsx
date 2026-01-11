@@ -4,30 +4,18 @@ import { Sidebar } from "@/components/dashboard/sidebar"
 import { MobileNav } from "@/components/dashboard/mobile-nav"
 import { WorkspaceProvider, useWorkspace } from "@/lib/workspace-provider"
 
-import { DashboardSkeleton } from "@/components/skeletons/dashboard-skeleton"
+import { PremiumLoader } from "@/components/ui/premium/premium-loader"
 
 function DashboardContent({ children }: { children: React.ReactNode }) {
   const { loading } = useWorkspace()
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background">
-        <Sidebar />
-        <div className="lg:pl-64">
-          <main className="pb-20 lg:pb-0">
-            <DashboardSkeleton />
-          </main>
-        </div>
-        <MobileNav />
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <div className="lg:pl-64">
-        <main className="pb-20 lg:pb-0">{children}</main>
+      <div className="lg:pl-72 relative min-h-screen flex flex-col">
+        <main className="flex-1 relative flex flex-col min-h-screen">
+          {loading ? <PremiumLoader /> : children}
+        </main>
       </div>
       <MobileNav />
     </div>

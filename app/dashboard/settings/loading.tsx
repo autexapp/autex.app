@@ -1,5 +1,5 @@
-import { SettingsSkeleton } from "@/components/skeletons/settings-skeleton"
+import { PremiumLoader } from "@/components/ui/premium/premium-loader"
 
-export default function SettingsLoading() {
-  return <SettingsSkeleton />
+export default function Loading() {
+  return <PremiumLoader />
 }

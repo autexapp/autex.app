@@ -8,12 +8,18 @@ import type { User } from '@supabase/supabase-js'
 interface WorkspaceContextType {
   workspaceId: string | null
   user: User | null
+  hasFacebookPage: boolean
+  needsReplyCount: number
+  pendingOrdersCount: number
   loading: boolean
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType>({
   workspaceId: null,
   user: null,
+  hasFacebookPage: false,
+  needsReplyCount: 0,
+  pendingOrdersCount: 0,
   loading: true,
 })
 
@@ -25,12 +31,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const router = useRouter()
   const [workspaceId, setWorkspaceId] = useState<string | null>(null)
   const [user, setUser] = useState<User | null>(null)
+  const [hasFacebookPage, setHasFacebookPage] = useState(false)
+  const [needsReplyCount, setNeedsReplyCount] = useState(0)
+  const [pendingOrdersCount, setPendingOrdersCount] = useState(0)
   const [loading, setLoading] = useState(true)
 
+  // Effect 1: Auth check - runs only once on mount
   useEffect(() => {
+    const supabase = createClient()
+    
     const checkAuth = async () => {
-      const supabase = createClient()
-      
       // Check if user is authenticated
       const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
       
@@ -50,20 +60,48 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
       if (workspaceError || !workspace) {
         console.error('No workspace found for user:', workspaceError)
-        // Could redirect to workspace creation page here
         setLoading(false)
         return
       }
 
       setWorkspaceId(workspace.id)
+
+      // Get initial counts
+      const [{ count: manualCount }, { count: ordersCount }] = await Promise.all([
+        supabase
+          .from('conversations')
+          .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', workspace.id)
+          .eq('needs_manual_response', true),
+        supabase
+          .from('orders')
+          .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', workspace.id)
+          .eq('status', 'pending')
+      ])
+
+      setNeedsReplyCount(manualCount || 0)
+      setPendingOrdersCount(ordersCount || 0)
+
+      // Get user's Facebook pages status
+      try {
+        const fbResponse = await fetch('/api/facebook/pages')
+        if (fbResponse.ok) {
+          const fbData = await fbResponse.json()
+          setHasFacebookPage(fbData.pages && fbData.pages.length > 0)
+        }
+      } catch (fbError) {
+        console.error('Failed to fetch Facebook pages during init:', fbError)
+      }
+
       setLoading(false)
     }
 
     checkAuth()
 
     // Listen for auth changes
-    const supabase = createClient()
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const supabaseForAuth = createClient()
+    const { data: { subscription } } = supabaseForAuth.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') {
         router.push('/login')
       }
@@ -72,10 +110,63 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     return () => {
       subscription.unsubscribe()
     }
-  }, [router])
+  }, [router]) // Only depends on router, runs once
+
+  // Effect 2: Realtime subscriptions - runs when workspaceId is set
+  useEffect(() => {
+    if (!workspaceId) return
+
+    const supabase = createClient()
+
+    const ordersChannel = supabase
+      .channel(`orders-${workspaceId}`)
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'orders',
+        filter: `workspace_id=eq.${workspaceId}`
+      }, () => {
+        supabase
+          .from('orders')
+          .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', workspaceId)
+          .eq('status', 'pending')
+          .then(({ count }) => setPendingOrdersCount(count || 0))
+      })
+      .subscribe()
+
+    const convChannel = supabase
+      .channel(`conversations-${workspaceId}`)
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'conversations',
+        filter: `workspace_id=eq.${workspaceId}`
+      }, () => {
+        supabase
+          .from('conversations')
+          .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', workspaceId)
+          .eq('needs_manual_response', true)
+          .then(({ count }) => setNeedsReplyCount(count || 0))
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(ordersChannel)
+      supabase.removeChannel(convChannel)
+    }
+  }, [workspaceId]) // Only re-runs when workspaceId changes
 
   return (
-    <WorkspaceContext.Provider value={{ workspaceId, user, loading }}>
+    <WorkspaceContext.Provider value={{ 
+      workspaceId, 
+      user, 
+      hasFacebookPage, 
+      needsReplyCount,
+      pendingOrdersCount,
+      loading 
+    }}>
       {children}
     </WorkspaceContext.Provider>
   )

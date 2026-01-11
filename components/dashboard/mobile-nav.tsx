@@ -4,10 +4,11 @@ import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { LayoutDashboard, Package, ShoppingBag, MessageSquare, Settings } from "lucide-react"
+import { useWorkspace } from "@/lib/workspace-provider"
+import { Home, Package, ShoppingBag, MessageSquare, Settings } from "lucide-react"
 
 const mobileNav = [
-  { name: "Home", href: "/dashboard", icon: LayoutDashboard },
+  { name: "Home", href: "/dashboard", icon: Home },
   { name: "Orders", href: "/dashboard/orders", icon: Package },
   { name: "Products", href: "/dashboard/products", icon: ShoppingBag },
   { name: "Chats", href: "/dashboard/conversations", icon: MessageSquare },
@@ -16,6 +17,7 @@ const mobileNav = [
 
 export function MobileNav() {
   const pathname = usePathname()
+  const { needsReplyCount, pendingOrdersCount } = useWorkspace()
 
   return (
     <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-border">

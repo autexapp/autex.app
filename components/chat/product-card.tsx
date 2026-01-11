@@ -41,11 +41,6 @@ export function ProductCard({ product, onOrderNow, onViewDetails }: ProductCardP
         <p className="text-primary font-bold text-sm">
           ৳{product.price.toLocaleString()}
         </p>
-        {product.category && (
-          <p className="text-xs text-muted-foreground mt-1 capitalize">
-            {product.category}
-          </p>
-        )}
       </CardContent>
       
       <CardFooter className="p-3 pt-0 flex flex-col gap-2">

@@ -73,8 +73,8 @@ export function validateProductFormData(formData: FormData): CreateProductInput 
   const data = {
     name: formData.get('name') as string,
     price: parseFloat(formData.get('price') as string),
-    description: formData.get('description') as string | undefined,
-    category: formData.get('category') as string | undefined,
+    description: (formData.get('description') as string) || undefined,
+    category: (formData.get('category') as string) || undefined,
     stock_quantity: formData.get('stock_quantity') 
       ? parseInt(formData.get('stock_quantity') as string) 
       : undefined,

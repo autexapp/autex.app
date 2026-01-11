@@ -79,39 +79,94 @@ export async function PATCH(
       );
     }
 
-    // Check if new image is provided
-    const imageFile = formData.get('image') as File | null;
-    let imageUrl = existingProduct.image_urls?.[0];
-    let imageHash = existingProduct.image_hash;
-
-    if (imageFile) {
-      // Convert file to buffer
-      const arrayBuffer = await imageFile.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-
-      // Upload new image to Cloudinary
-      console.log('Uploading new image to Cloudinary...');
-      const uploadResult = await uploadToCloudinary(buffer);
-      imageUrl = uploadResult.secure_url;
-
-      // Generate new hash
-      console.log('Generating new image hash...');
-      imageHash = await generateImageHash(buffer);
-
-      // TODO: Optionally delete old image from Cloudinary
-      // if (existingProduct.image_urls?.[0]) {
-      //   const oldPublicId = extractPublicIdFromUrl(existingProduct.image_urls[0]);
-      //   await deleteFromCloudinary(oldPublicId);
-      // }
+    // ========================================
+    // MULTI-IMAGE HANDLING FOR EDITS
+    // ========================================
+    
+    // Get new image files (image_0, image_1, etc.)
+    const newImageCount = parseInt(formData.get('new_image_count') as string || '0');
+    const newImageFiles: File[] = [];
+    
+    // Backward compatibility: check for old 'image' field
+    const legacyImage = formData.get('image') as File;
+    if (legacyImage && legacyImage.size > 0) {
+      newImageFiles.push(legacyImage);
+    } else {
+      for (let i = 0; i < newImageCount; i++) {
+        const file = formData.get(`image_${i}`) as File;
+        if (file && file.size > 0) {
+          newImageFiles.push(file);
+        }
+      }
     }
+    
+    // Get list of existing URLs to keep (user didn't remove them)
+    const existingUrlsStr = formData.get('existing_image_urls') as string;
+    const keptUrls: string[] = existingUrlsStr ? JSON.parse(existingUrlsStr) : [];
+    
+    console.log(`📸 PATCH: ${newImageFiles.length} new images, ${keptUrls.length} kept`);
+    
+    // Build final image arrays
+    let finalImageUrls: string[] = [...keptUrls];
+    let finalImageHashes: string[] = [];
+    
+    // For kept images, we need to regenerate hashes (or we could track per-image hashes in DB)
+    // For simplicity, we'll regenerate hashes only for new images and assume kept images have their hashes
+    // TODO: In future, could store image_hash_map to avoid regenerating
+    
+    // Process new images if any
+    if (newImageFiles.length > 0) {
+      const { generateMultiHashes } = await import('@/lib/image-recognition/hash');
+      const { uploadToCloudinary } = await import('@/lib/cloudinary/upload');
+      
+      const processPromises = newImageFiles.map(async (file) => {
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        
+        const uploadResult = await uploadToCloudinary(buffer);
+        const hashes = await generateMultiHashes(buffer);
+        
+        return { url: uploadResult.secure_url, hashes };
+      });
+      
+      const results = await Promise.all(processPromises);
+      
+      results.forEach((result, index) => {
+        finalImageUrls.push(result.url);
+        finalImageHashes.push(...result.hashes);
+        console.log(`  ✅ New image ${index + 1} processed: ${result.hashes.length} hashes`);
+      });
+    }
+    
+    // For kept images, we regenerate hashes from URL (simplified approach)
+    // A more optimized approach would store hash-to-image mapping in DB
+    if (keptUrls.length > 0 && existingProduct.image_hashes) {
+      const existingHashCount = existingProduct.image_hashes.length;
+      const existingUrlCount = existingProduct.image_urls?.length || 0;
+      const hashesPerImage = existingUrlCount > 0 ? Math.floor(existingHashCount / existingUrlCount) : 3;
+      
+      // Calculate which hashes to keep based on kept URL positions
+      const existingUrls = existingProduct.image_urls || [];
+      keptUrls.forEach(keptUrl => {
+        const originalIndex = existingUrls.indexOf(keptUrl);
+        if (originalIndex >= 0) {
+          const startHash = originalIndex * hashesPerImage;
+          const endHash = startHash + hashesPerImage;
+          const hashesToKeep = existingProduct.image_hashes.slice(startHash, endHash);
+          finalImageHashes.push(...hashesToKeep);
+        }
+      });
+    }
+    
+    console.log(`📸 Final: ${finalImageUrls.length} URLs, ${finalImageHashes.length} hashes`);
 
     // Update product in database
     const { data: product, error: updateError } = await supabase
       .from('products')
       .update({
         ...updateData,
-        ...(imageUrl && { image_urls: [imageUrl] }),
-        ...(imageHash && { image_hash: imageHash }),
+        image_urls: finalImageUrls,
+        image_hashes: finalImageHashes,
         ...(updateData.colors && { colors: updateData.colors }),
         ...(updateData.sizes && { sizes: updateData.sizes }),
         ...(updateData.size_stock && { size_stock: updateData.size_stock }),

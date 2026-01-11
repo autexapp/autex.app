@@ -5,15 +5,19 @@ import { TopBar } from "@/components/dashboard/top-bar"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { StatsCard } from "@/components/dashboard/stats-card"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { PremiumLoader } from "@/components/ui/premium/premium-loader"
+import { SubscriptionModal } from "@/components/admin/subscription-modal"
 import {
   DollarSign,
   Activity,
   Zap,
-  Loader2,
   PieChart as PieChartIcon,
   TrendingUp,
   Users,
-  Search
+  Search,
+  Settings2
 } from "lucide-react"
 import { 
   AreaChart, 
@@ -53,9 +57,18 @@ interface UserData {
   email: string
   business_name: string
   phone: string
+  workspace_id: string | null
   workspace_name: string
   created_at: string
   last_sign_in: string | null
+  // Subscription fields
+  subscription_status: 'trial' | 'active' | 'expired'
+  subscription_plan: string | null
+  trial_ends_at: string | null
+  subscription_expires_at: string | null
+  admin_paused: boolean
+  last_payment_date: string | null
+  total_paid: number
 }
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
@@ -64,7 +77,6 @@ const USD_TO_BDT = 120; // Approximate exchange rate
 // Admin email - only this user can access the admin page
 const ADMIN_EMAIL = 'admin@gmail.com';
 
-import { AdminSkeleton } from "@/components/skeletons/admin-skeleton"
 import { useRouter } from "next/navigation"
 
 export default function AdminDashboardPage() {
@@ -165,7 +177,7 @@ export default function AdminDashboardPage() {
   }
 
   if (isAdmin === null || loading) {
-    return <AdminSkeleton />
+    return <PremiumLoader />
   }
 
   return (
@@ -376,8 +388,8 @@ export default function AdminDashboardPage() {
             </CardHeader>
             <CardContent>
               {usersLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <div className="relative h-48 py-8">
+                  <PremiumLoader className="bg-transparent" />
                 </div>
               ) : filteredUsers.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">

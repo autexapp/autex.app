@@ -17,9 +17,10 @@ interface AddProductModalProps {
   open: boolean
   onClose: () => void
   product?: Product | null
+  onSuccess?: () => void
 }
 
-export function AddProductModal({ open, onClose, product }: AddProductModalProps) {
+export function AddProductModal({ open, onClose, product, onSuccess }: AddProductModalProps) {
   return (
     <ProductForm
       open={open}
@@ -27,7 +28,7 @@ export function AddProductModal({ open, onClose, product }: AddProductModalProps
       product={product}
       onSuccess={() => {
         onClose()
-        // Parent component will handle success toast and refresh
+        onSuccess?.()
       }}
     />
   )

@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { StatsCard } from "@/components/dashboard/stats-card"
+import { PremiumLoader } from "@/components/ui/premium/premium-loader"
 import {
   DollarSign,
   ShoppingCart,
@@ -13,7 +14,6 @@ import {
   Clock,
   Download,
   Trophy,
-  Loader2,
 } from "lucide-react"
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar, Cell } from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
@@ -29,8 +29,6 @@ interface AnalyticsData {
   statusBreakdown: Record<string, number>
   dateRange: string
 }
-
-import { AnalyticsSkeleton } from "@/components/skeletons/analytics-skeleton"
 
 export default function AnalyticsPage() {
   const [dateRange, setDateRange] = useState("7d")
@@ -74,7 +72,7 @@ export default function AnalyticsPage() {
   }
 
   if (loading) {
-    return <AnalyticsSkeleton />
+    return <PremiumLoader />
   }
 
   return (

@@ -7,6 +7,9 @@ import { TopBar } from '@/components/dashboard/top-bar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { SmartCard } from "@/components/ui/premium/smart-card";
+import { PremiumButton } from "@/components/ui/premium/premium-button";
+import { PremiumLoader } from "@/components/ui/premium/premium-loader";
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
@@ -46,8 +49,6 @@ interface PaginationData {
 
 import { useSearchParams } from 'next/navigation';
 
-import { ProductsSkeleton } from "@/components/skeletons/products-skeleton"
-
 export default function ProductsPage() {
   const searchParams = useSearchParams();
   const [products, setProducts] = useState<Product[]>([]);
@@ -57,7 +58,8 @@ export default function ProductsPage() {
     total: 0,
     totalPages: 0,
   });
-  const [isLoading, setIsLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [isFetching, setIsFetching] = useState(false);
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [stockFilter, setStockFilter] = useState('all');
@@ -66,6 +68,20 @@ export default function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [viewingProduct, setViewingProduct] = useState<Product | null>(null);
   const [deleteProductId, setDeleteProductId] = useState<string | null>(null);
+  
+  // Debounced search state
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchQuery);
+
+  // Update debounced search query
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 500);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [searchQuery]);
 
   // Open add modal if query param is present
   useEffect(() => {
@@ -76,7 +92,13 @@ export default function ProductsPage() {
 
   const fetchProducts = useCallback(async (page: number = 1, search: string = '', category: string = 'all', stock: string = 'all', sort: string = 'recent') => {
     try {
-      setIsLoading(true);
+      // Set fetching state for background updates
+      setIsFetching(true);
+      
+      // Only set initial loading if we have no data
+      if (products.length === 0) {
+        setInitialLoading(true);
+      }
       const params = new URLSearchParams({
         page: page.toString(),
         limit: '20',
@@ -100,13 +122,15 @@ export default function ProductsPage() {
       console.error('Error fetching products:', error);
       toast.error(error.message || 'Failed to load products');
     } finally {
-      setIsLoading(false);
+      setInitialLoading(false);
+      setIsFetching(false);
     }
-  }, []);
+  }, [products.length]); // Add dependency for products.length check
 
+  // Unified fetch effect handles filters and debounced search
   useEffect(() => {
-    fetchProducts(1, searchQuery, categoryFilter, stockFilter, sortBy);
-  }, [fetchProducts, searchQuery, categoryFilter, stockFilter, sortBy]);
+    fetchProducts(1, debouncedSearchQuery, categoryFilter, stockFilter, sortBy);
+  }, [fetchProducts, debouncedSearchQuery, categoryFilter, stockFilter, sortBy]);
 
   const handleSearch = (value: string) => {
     setSearchQuery(value);
@@ -164,8 +188,8 @@ export default function ProductsPage() {
   // Get unique categories from products
   const categories = [...new Set(products.map(p => p.category).filter(Boolean))];
 
-  if (isLoading) {
-    return <ProductsSkeleton />
+  if (initialLoading) {
+    return <PremiumLoader />
   }
 
   return (
@@ -173,144 +197,154 @@ export default function ProductsPage() {
       <TopBar title="Products" />
 
       <div className="p-4 lg:p-6 space-y-6">
-        {/* Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <h2 className="text-2xl font-semibold">Products</h2>
-          <div className="flex gap-2">
-            <Button variant="outline">
-              <Upload className="h-4 w-4 mr-2" />
-              Bulk Import CSV
-            </Button>
-            <Button onClick={handleAddProduct}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Product
-            </Button>
-          </div>
-        </div>
-
-        {/* Filters */}
-        <Card className="bg-card border border-border shadow-sm">
+        {/* Unified Toolbar */}
+        <SmartCard variant="static" className="p-1">
           <CardContent className="p-4">
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search products..."
-                  className="pl-9"
-                  value={searchQuery}
-                  onChange={(e) => handleSearch(e.target.value)}
-                />
+            <div className="flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center">
+              
+              {/* Left Side: Search & Filters */}
+              <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto flex-1">
+                {/* Search */}
+                <div className="relative w-full sm:w-[240px] lg:w-[300px] shrink-0">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search products..."
+                    className="pl-9 bg-background/50 border-zinc-200 dark:border-white/10 dark:bg-white/5 focus:bg-background transition-all"
+                    value={searchQuery}
+                    onChange={(e) => handleSearch(e.target.value)}
+                  />
+                </div>
+                
+                {/* Filters Row */}
+                <div className="grid grid-cols-2 sm:flex sm:flex-row gap-3 w-full sm:w-auto">
+                    <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                      <SelectTrigger className="w-full sm:w-[160px] bg-background/50 border-zinc-200 dark:border-white/10 dark:bg-white/5">
+                        <SelectValue placeholder="Category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Categories</SelectItem>
+                        {categories.map((category) => (
+                          <SelectItem key={category} value={category!}>
+                            {category}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    
+                    <Select value={stockFilter} onValueChange={setStockFilter}>
+                      <SelectTrigger className="w-full sm:w-[130px] bg-background/50 border-zinc-200 dark:border-white/10 dark:bg-white/5">
+                        <SelectValue placeholder="Stock" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Stock</SelectItem>
+                        <SelectItem value="instock">In Stock</SelectItem>
+                        <SelectItem value="outofstock">Out of Stock</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    
+                    <Select value={sortBy} onValueChange={setSortBy}>
+                      <SelectTrigger className="col-span-2 sm:col-span-1 w-full sm:w-[160px] bg-background/50 border-zinc-200 dark:border-white/10 dark:bg-white/5">
+                        <SelectValue placeholder="Sort by" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="recent">Recently Added</SelectItem>
+                        <SelectItem value="name-asc">Name A-Z</SelectItem>
+                        <SelectItem value="name-desc">Name Z-A</SelectItem>
+                        <SelectItem value="price-low">Price: Low to High</SelectItem>
+                        <SelectItem value="price-high">Price: High to Low</SelectItem>
+                      </SelectContent>
+                    </Select>
+                </div>
               </div>
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="All Categories" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
-                  {categories.map((category) => (
-                    <SelectItem key={category} value={category!}>
-                      {category}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={stockFilter} onValueChange={setStockFilter}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="All Stock" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="instock">In Stock</SelectItem>
-                  <SelectItem value="outofstock">Out of Stock</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue placeholder="Sort by" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="recent">Recently Added</SelectItem>
-                  <SelectItem value="name-asc">Name A-Z</SelectItem>
-                  <SelectItem value="name-desc">Name Z-A</SelectItem>
-                  <SelectItem value="price-low">Price: Low to High</SelectItem>
-                  <SelectItem value="price-high">Price: High to Low</SelectItem>
-                </SelectContent>
-              </Select>
+
+              {/* Right Side: Actions */}
+              <div className="flex items-center gap-2 w-full sm:w-auto sm:ml-auto xl:ml-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-border/50">
+                  <PremiumButton onClick={handleAddProduct} className="w-full sm:w-auto h-10">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Product
+                  </PremiumButton>
+                  <Button variant="outline" className="h-10 opacity-50 cursor-not-allowed w-full sm:w-auto text-xs sm:text-sm" disabled>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Bulk Import
+                  </Button>
+              </div>
+
             </div>
           </CardContent>
-        </Card>
+        </SmartCard>
 
         {/* Products Grid */}
         <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div className={`grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 transition-opacity duration-200 ${isFetching ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
               {products.map((product) => (
-                <Card key={product.id} className="bg-card border border-border shadow-sm overflow-hidden">
-                  {/* Fixed height image - clickable for details */}
+                <SmartCard key={product.id} className="overflow-hidden group">
+                  {/* Image Container - Responsive Aspect Ratio */}
                   <div 
-                    className="h-48 relative bg-muted cursor-pointer group"
+                    className="relative w-full aspect-[4/3] bg-muted cursor-pointer overflow-hidden"
                     onClick={() => setViewingProduct(product)}
                   >
                     <img
                       src={product.image_urls?.[0] || "/placeholder.svg"}
                       alt={product.name}
-                      className={`w-full h-full object-cover ${product.stock_quantity === 0 ? "opacity-50" : ""} group-hover:opacity-80 transition-opacity`}
+                      className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 ${product.stock_quantity === 0 ? "opacity-50 grayscale" : "opacity-100"}`}
                     />
-                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20">
-                      <Eye className="h-8 w-8 text-white drop-shadow" />
+                    
+                    {/* Hover Overlay */}
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-black/40 backdrop-blur-[2px]">
+                      <Eye className="h-8 w-8 text-white drop-shadow-md transform scale-90 group-hover:scale-100 transition-transform duration-300" />
                     </div>
+
+                    {/* Stock Badge */}
                     {product.stock_quantity === 0 && (
-                      <Badge variant="destructive" className="absolute top-2 right-2 text-xs px-2 py-0.5">
+                      <Badge variant="destructive" className="absolute top-2 right-2 text-xs px-2 py-0.5 shadow-sm">
                         Out of Stock
                       </Badge>
                     )}
                   </div>
                   
                   {/* Card content */}
-                  <CardContent className="p-3 space-y-2">
-                    {/* Product name */}
-                    <h3 className="font-semibold text-sm line-clamp-1">{product.name}</h3>
+                  <div className="p-3 sm:p-4 space-y-2 sm:space-y-3">
+                    <div className="space-y-1">
+                      {/* Product name */}
+                      <h3 className="font-medium text-xs sm:text-sm leading-tight text-foreground line-clamp-1" title={product.name}>
+                        {product.name}
+                      </h3>
+                      
+                      {/* Price */}
+                      <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 sm:gap-0">
+                         <p className="font-serif text-sm sm:text-lg font-semibold tracking-tight">৳{product.price.toLocaleString()}</p>
+                         <p className="text-[10px] sm:text-xs text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded w-fit">
+                            {product.stock_quantity} <span className="hidden sm:inline">in stock</span><span className="sm:hidden">left</span>
+                         </p>
+                      </div>
+                    </div>
                     
-                    {/* Price */}
-                    <p className="font-semibold text-lg">৳{product.price.toLocaleString()}</p>
-                    
-                    {/* Category */}
-                    {product.category && (
-                      <p className="text-xs text-muted-foreground">
-                        Category: {product.category}
-                      </p>
-                    )}
-                    
-                    {/* Stock */}
-                    <p className="text-xs text-muted-foreground">
-                      Stock: {product.stock_quantity} {product.stock_quantity === 1 ? "unit" : "units"}
-                    </p>
-                    
-                    {/* Action buttons */}
-                    <div className="flex gap-2 pt-1">
+                    {/* Action buttons - Always visible but styled subtly */}
+                    <div className="grid grid-cols-4 gap-2 pt-1">
                       <Button
                         variant="outline"
                         size="sm"
-                        className="flex-1 h-9"
+                        className="col-span-3 h-7 sm:h-8 text-[10px] sm:text-xs font-medium border-border/50 hover:border-primary/50 hover:text-primary transition-colors px-1"
                         onClick={() => handleEditProduct(product)}
                       >
-                        <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                        Edit
+                        <Pencil className="h-3 w-3 mr-1.5" />
+                        Edit <span className="hidden sm:inline ml-1">Product</span>
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-9 px-3"
+                        className="col-span-1 h-7 sm:h-8 px-0 text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-colors"
                         onClick={() => handleDeleteProduct(product.id)}
                       >
-                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        <Trash2 className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                       </Button>
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                </SmartCard>
               ))}
             </div>
 
-            {products.length === 0 && (
+            {!initialLoading && products.length === 0 && !isFetching && (
               <Card className="bg-card border border-border shadow-sm">
                 <CardContent className="p-12 text-center">
                   <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
@@ -367,6 +401,7 @@ export default function ProductsPage() {
           setEditingProduct(null);
         }}
         product={editingProduct}
+        onSuccess={handleFormSuccess}
       />
 
       {/* Delete Confirmation Dialog */}

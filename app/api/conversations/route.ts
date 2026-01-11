@@ -26,6 +26,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status') || 'all'
     const search = searchParams.get('search') || ''
+    const needsManualResponse = searchParams.get('needs_manual_response')
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
     const offset = (page - 1) * limit
@@ -56,6 +57,11 @@ export async function GET(request: Request) {
       query = query.eq('current_state', status.toUpperCase())
     }
 
+    // Filter for conversations needing manual response
+    if (needsManualResponse === 'true') {
+      query = query.eq('needs_manual_response', true)
+    }
+
     const { data: conversations, error: conversationsError, count } = await query
 
     if (conversationsError) {
@@ -79,12 +85,20 @@ export async function GET(request: Request) {
       })
     )
 
+    // Get count of conversations needing manual response (for badge)
+    const { count: manualCount } = await supabase
+      .from('conversations')
+      .select('id', { count: 'exact', head: true })
+      .eq('workspace_id', workspace.id)
+      .eq('needs_manual_response', true)
+
     return NextResponse.json({
       conversations: conversationsWithCounts,
       total: count || 0,
       page,
       limit,
-      totalPages: Math.ceil((count || 0) / limit)
+      totalPages: Math.ceil((count || 0) / limit),
+      manualResponseCount: manualCount || 0
     })
   } catch (error) {
     console.error('Conversations API error:', error)

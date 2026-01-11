@@ -1,5 +1,5 @@
-import { ProductsSkeleton } from "@/components/skeletons/products-skeleton"
+import { PremiumLoader } from "@/components/ui/premium/premium-loader"
 
-export default function ProductsLoading() {
-  return <ProductsSkeleton />
+export default function Loading() {
+  return <PremiumLoader />
 }

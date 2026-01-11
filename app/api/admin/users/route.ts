@@ -31,10 +31,10 @@ export async function GET(request: NextRequest) {
       .from('profiles')
       .select('id, business_name, phone');
 
-    // Fetch workspaces for workspace names
+    // Fetch workspaces with subscription data
     const { data: workspaces } = await supabaseAdmin
       .from('workspaces')
-      .select('id, name, owner_id');
+      .select('id, name, owner_id, subscription_status, subscription_plan, trial_ends_at, subscription_expires_at, admin_paused, last_payment_date, total_paid');
 
     // Create lookup maps
     const profilesMap = new Map(profiles?.map(p => [p.id, p]) || []);
@@ -50,9 +50,18 @@ export async function GET(request: NextRequest) {
         email: authUser.email || '',
         business_name: profile?.business_name || authUser.user_metadata?.business_name || '-',
         phone: profile?.phone || authUser.user_metadata?.phone || '-',
+        workspace_id: workspace?.id || null,
         workspace_name: workspace?.name || '-',
         created_at: authUser.created_at,
         last_sign_in: authUser.last_sign_in_at,
+        // Subscription fields
+        subscription_status: workspace?.subscription_status || 'trial',
+        subscription_plan: workspace?.subscription_plan || null,
+        trial_ends_at: workspace?.trial_ends_at || null,
+        subscription_expires_at: workspace?.subscription_expires_at || null,
+        admin_paused: workspace?.admin_paused || false,
+        last_payment_date: workspace?.last_payment_date || null,
+        total_paid: workspace?.total_paid || 0,
       };
     });
 

@@ -36,6 +36,7 @@ import { generateOrderNumber } from './replies';
 import { getCachedSettings, WorkspaceSettings, getDeliveryCharge } from '@/lib/workspace/settings-cache';
 import { AgentTools, ToolResult } from './agent-tools';
 import { getContextManager } from './context-manager';
+import { checkKnowledgeBoundary, getManualFlagResponse } from './knowledge-check';
 
 // ============================================
 // TYPES
@@ -254,6 +255,49 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       const contextManager = getContextManager();
       contextManager.saveCheckpoint(currentContext, 'Before AI Director call');
       
+      // ========================================
+      // STEP 4a: KNOWLEDGE PRE-CHECK (COST OPTIMIZATION)
+      // ========================================
+      // Check if we even have the knowledge to answer this question
+      // If not, skip AI Director entirely and flag for manual response
+      
+      const knowledgeCheck = checkKnowledgeBoundary(input.messageText, settings);
+      
+      if (knowledgeCheck.shouldFlag) {
+        console.log(`⚠️ Knowledge boundary reached: ${knowledgeCheck.flagReason}`);
+        console.log('📥 Flagging for manual response (skipping AI call to save cost)');
+        
+        // Flag conversation for manual response
+        await flagForManualResponse(
+          supabase,
+          input.conversationId,
+          knowledgeCheck.flagReason || 'Unknown question'
+        );
+        
+        const manualFlagResponse = getManualFlagResponse();
+        
+        // Send response to user (skip in test mode)
+        if (!input.isTestMode) {
+          await sendMessage(input.pageId, input.customerPsid, manualFlagResponse);
+        }
+        
+        // Log bot message
+        await supabase.from('messages').insert({
+          conversation_id: input.conversationId,
+          sender: 'bot',
+          sender_type: 'bot',
+          message_text: manualFlagResponse,
+          message_type: 'text',
+          created_at: new Date().toISOString(),
+        });
+        
+        return {
+          response: manualFlagResponse,
+          newState: currentState,
+          updatedContext: currentContext
+        };
+      }
+      
       try {
         let decision: AIDirectorDecision | null = null;
         let finalDecision: AIDirectorDecision | null = null;
@@ -328,8 +372,13 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
         // ========================================
         // STEP 4a: CONFIDENCE CHECK
         // ========================================
+        // IMPORTANT: Skip confidence check for FLAG_MANUAL - low confidence is intentional
+        // when AI explicitly decides it doesn't have the knowledge to answer
         
-        if (hasLowConfidence(decision)) {
+        if (decision.action === 'FLAG_MANUAL') {
+          console.log(`🚩 AI Director returned FLAG_MANUAL - skipping confidence check`);
+          // FLAG_MANUAL is intentionally low confidence - don't override it
+        } else if (hasLowConfidence(decision)) {
           console.log(`⚠️ Low confidence (${decision.confidence}%) - asking for clarification`);
           decision = createClarificationDecision(decision, currentState);
         } else {
@@ -682,6 +731,16 @@ async function executeDecision(
       newState = 'IDLE';
       updatedContext.cart = [];
       updatedContext.checkout = {};
+      break;
+    
+    case 'FLAG_MANUAL':
+      // Flag conversation for manual owner response
+      console.log('🚩 Flagging for manual response (AI Director decision)...');
+      await flagForManualResponse(
+        supabase,
+        input.conversationId,
+        decision.actionData?.flagReason || 'AI Director flagged - missing information'
+      );
       break;
     
     case 'SEND_PRODUCT_CARD':
@@ -1330,4 +1389,39 @@ async function searchProducts(
   
   console.log(`✅ Found ${products.length} products`);
   return products;
+}
+
+/**
+ * Flags a conversation for manual owner response
+ * 
+ * Called when:
+ * 1. Knowledge pre-check detects a question we can't answer
+ * 2. AI Director returns FLAG_MANUAL action
+ * 
+ * @param supabase - Supabase client
+ * @param conversationId - ID of the conversation to flag
+ * @param reason - Reason for flagging (for owner context)
+ */
+async function flagForManualResponse(
+  supabase: any,
+  conversationId: string,
+  reason: string
+): Promise<void> {
+  console.log(`🚩 Flagging conversation ${conversationId} for manual response`);
+  console.log(`   Reason: ${reason}`);
+  
+  const { error } = await supabase
+    .from('conversations')
+    .update({
+      needs_manual_response: true,
+      manual_flag_reason: reason,
+      manual_flagged_at: new Date().toISOString()
+    })
+    .eq('id', conversationId);
+  
+  if (error) {
+    console.error('❌ Failed to flag conversation:', error);
+  } else {
+    console.log('✅ Conversation flagged successfully');
+  }
 }

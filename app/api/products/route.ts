@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     // Build query
     let query = supabase
       .from('products')
-      .select('*', { count: 'exact' })
+      .select('id, name, price, stock_quantity, image_urls, colors, sizes, size_stock, created_at, updated_at', { count: 'exact' })
       .eq('workspace_id', workspace.id);
 
     // Apply filters
@@ -133,15 +133,7 @@ export async function POST(request: NextRequest) {
     const productData = validateProductFormData(formData);
     console.log('Product data validated:', productData);
 
-    // Get image file
-    const imageFile = formData.get('image') as File;
-    if (!imageFile) {
-      return NextResponse.json(
-        { error: 'Product image is required' },
-        { status: 400 }
-      );
-    }
-    console.log('Image file received:', imageFile.name, imageFile.size, 'bytes');
+    // Images are now handled in the MULTI-IMAGE PROCESSING section below
 
     // Get authenticated user
     console.log('Getting authenticated user...');
@@ -174,56 +166,105 @@ export async function POST(request: NextRequest) {
     }
     console.log('Workspace found:', workspace.id);
 
-    // Convert file to buffer
-    console.log('Converting file to buffer...');
-    const arrayBuffer = await imageFile.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    console.log('Buffer created, size:', buffer.length);
-
-    // Upload to Cloudinary
-    console.log('Uploading image to Cloudinary...');
-    let uploadResult;
-    try {
-      uploadResult = await uploadToCloudinary(buffer);
-      console.log('Image uploaded successfully:', uploadResult.secure_url);
-    } catch (uploadError: any) {
-      console.error('Cloudinary upload error:', uploadError);
+    // ========================================
+    // MULTI-IMAGE PROCESSING
+    // ========================================
+    
+    // Collect all image files (image_0, image_1, etc.)
+    const imageFiles: File[] = [];
+    const newImageCount = parseInt(formData.get('new_image_count') as string || '0');
+    
+    // For backward compatibility, also check for old 'image' field
+    const legacyImage = formData.get('image') as File;
+    if (legacyImage && legacyImage.size > 0) {
+      imageFiles.push(legacyImage);
+    } else {
+      // New multi-image format
+      for (let i = 0; i < newImageCount; i++) {
+        const file = formData.get(`image_${i}`) as File;
+        if (file && file.size > 0) {
+          imageFiles.push(file);
+        }
+      }
+    }
+    
+    // Get existing URLs to preserve (when editing)
+    const existingUrlsStr = formData.get('existing_image_urls') as string;
+    const existingUrls: string[] = existingUrlsStr ? JSON.parse(existingUrlsStr) : [];
+    
+    console.log(`📸 Processing ${imageFiles.length} new images, ${existingUrls.length} existing`);
+    
+    // Validate: at least one image for new products
+    if (imageFiles.length === 0 && existingUrls.length === 0) {
       return NextResponse.json(
-        { error: `Failed to upload image: ${uploadError.message}` },
-        { status: 500 }
+        { error: 'At least one product image is required' },
+        { status: 400 }
       );
     }
 
-    // Generate multiple perceptual hashes for Tier 1 matching (production-ready)
-    console.log('Generating multi-hashes (full, center, square)...');
-    let imageHashes: string[];
-    try {
+    // Process new images in parallel
+    const allImageUrls: string[] = [...existingUrls]; // Start with existing
+    const allImageHashes: string[] = []; // Will collect all hashes
+    let firstImageBuffer: Buffer | null = null; // For visual features & keywords
+    
+    if (imageFiles.length > 0) {
+      console.log('🔄 Processing new images in parallel...');
+      
       const { generateMultiHashes } = await import('@/lib/image-recognition/hash');
-      imageHashes = await generateMultiHashes(buffer);
-      console.log('Multi-hashes generated:', imageHashes);
-    } catch (hashError: any) {
-      console.error('Hash generation error:', hashError);
-      return NextResponse.json(
-        { error: `Failed to generate image hashes: ${hashError.message}` },
-        { status: 500 }
-      );
+      
+      // Process all images and collect results
+      const imageProcessingPromises = imageFiles.map(async (file) => {
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        
+        // Upload to Cloudinary
+        const uploadResult = await uploadToCloudinary(buffer);
+        
+        // Generate 3 hashes (full, center, square)
+        const hashes = await generateMultiHashes(buffer);
+        
+        return {
+          url: uploadResult.secure_url,
+          hashes,
+          buffer,
+        };
+      });
+      
+      const results = await Promise.all(imageProcessingPromises);
+      
+      // Collect URLs and hashes
+      results.forEach((result, index) => {
+        allImageUrls.push(result.url);
+        allImageHashes.push(...result.hashes);
+        console.log(`  ✅ Image ${index + 1} processed: ${result.hashes.length} hashes`);
+      });
+      
+      // Store first buffer for visual features (explicit access for TypeScript)
+      if (results.length > 0) {
+        firstImageBuffer = results[0].buffer;
+      }
+      
+      console.log(`📸 Total: ${allImageUrls.length} URLs, ${allImageHashes.length} hashes`);
     }
+    
+    // If no new images, we need to keep existing hashes (handled in PATCH, not here)
+    // For POST (new product), we always have new images
 
-    // Extract visual features for Tier 2 matching
+    // Extract visual features for Tier 2 matching (from first image only)
     console.log('Extracting visual features...');
     let visualFeatures;
-    try {
-      visualFeatures = await extractVisualFeatures(buffer);
-      console.log('Visual features extracted:', {
-        aspectRatio: visualFeatures.aspectRatio,
-        colorCount: visualFeatures.dominantColors.length,
-      });
-    } catch (featuresError: any) {
-      console.error('Visual features extraction error:', featuresError);
-      // Don't fail the request if visual features extraction fails
-      // Just log the error and continue without visual features
-      console.warn('Continuing without visual features');
-      visualFeatures = null;
+    if (firstImageBuffer) {
+      try {
+        visualFeatures = await extractVisualFeatures(firstImageBuffer);
+        console.log('Visual features extracted:', {
+          aspectRatio: visualFeatures.aspectRatio,
+          colorCount: visualFeatures.dominantColors.length,
+        });
+      } catch (featuresError: any) {
+        console.error('Visual features extraction error:', featuresError);
+        console.warn('Continuing without visual features');
+        visualFeatures = null;
+      }
     }
 
     // MAGIC UPLOAD: Auto-generate search keywords using OpenAI
@@ -237,8 +278,9 @@ export async function POST(request: NextRequest) {
         apiKey: process.env.OPENAI_API_KEY,
       });
 
-      // Convert image to Base64
-      const base64Image = `data:image/jpeg;base64,${buffer.toString('base64')}`;
+      // Convert first image to Base64 for auto-tagging
+      if (!firstImageBuffer) throw new Error('No image buffer available');
+      const base64Image = `data:image/jpeg;base64,${firstImageBuffer.toString('base64')}`;
 
       const response = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
@@ -309,11 +351,11 @@ export async function POST(request: NextRequest) {
         name: productData.name,
         price: productData.price,
         description: productData.description || null,
-        category: productData.category || null,
+        // category: productData.category || null,
         stock_quantity: productData.stock_quantity || 0,
         variations: productData.variations || null,
-        image_urls: [uploadResult.secure_url],
-        image_hashes: imageHashes, // Multi-hash for Tier 1
+        image_urls: allImageUrls, // All uploaded images
+        image_hashes: allImageHashes, // 3 hashes per image for Tier 1
         visual_features: visualFeatures as any, // For Tier 2
         search_keywords: searchKeywords, // Magic Upload keywords for Tier 3
         colors: productData.colors || [],

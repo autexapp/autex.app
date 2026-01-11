@@ -1,0 +1,775 @@
+🏗️ Admin Dashboard - Complete Architecture
+🎯 Goals & Purpose
+Primary Goal: Monitor first 3-5 real users to validate product and optimize costs.
+
+Success Metrics:
+
+Cost per conversation < ৳2
+Success rate > 60%
+Response time < 3 seconds
+Zero critical errors
+Timeline: Ship in 2-3 days (MVP)
+
+📊 Dashboard Structure
+Route Structure
+/admin
+├─ /admin (Overview)
+├─ /admin/users (All workspaces)
+├─ /admin/users/[id] (Single user dashboard)
+├─ /admin/users/[id]/conversations (User's conversations)
+├─ /admin/conversations (All conversations, filterable)
+├─ /admin/conversations/[id] (Full chat detail + cost breakdown)
+├─ /admin/costs (System-wide cost analysis)
+└─ /admin/errors (Error logs & analytics)
+🔐 Authentication & Access Control
+Admin Email Check
+Environment Variable:
+
+env
+ADMIN_EMAILS=your.email@gmail.com,teammate@gmail.com
+Middleware: /middleware.ts
+
+typescript
+// Check if accessing /admin routes
+if (pathname.startsWith('/admin')) {
+  const session = await getSession();
+  
+  if (!session?.user?.email) {
+    return redirect('/login');
+  }
+  
+  const adminEmails = process.env.ADMIN_EMAILS?.split(',') || [];
+  
+  if (!adminEmails.includes(session.user.email)) {
+    return redirect('/dashboard'); // Not admin, go to regular dashboard
+  }
+}
+Why this approach:
+
+✅ Simple to implement
+✅ Easy to add/remove admins (just edit .env)
+✅ Secure (email verified by Supabase Auth)
+✅ No extra database tables needed
+📦 Data Architecture
+Core Entities
+Workspace (User/Business Owner)
+  ├─ Facebook Pages (1-3)
+  ├─ Conversations (Many)
+  │   ├─ Messages (Many)
+  │   ├─ Orders (0-1)
+  │   └─ API Usage Logs (Many)
+  ├─ Products (Many)
+  └─ Settings (1)
+Key Metrics per Workspace
+typescript
+interface WorkspaceMetrics {
+  // Identity
+  workspace_id: string;
+  workspace_name: string;
+  owner_email: string;
+  
+  // Activity
+  total_conversations: number;
+  active_conversations: number; // Last 24h
+  total_messages: number;
+  
+  // Success
+  conversations_with_orders: number;
+  success_rate: number; // (orders / total) * 100
+  total_revenue: number; // Sum of order amounts
+  
+  // Cost
+  total_cost_today: number;
+  total_cost_month: number;
+  cost_per_conversation: number;
+  
+  // Performance
+  avg_response_time: number; // Bot reply latency
+  error_count: number;
+  
+  // Timestamps
+  created_at: Date;
+  last_active_at: Date;
+}
+Key Metrics per Conversation
+typescript
+interface ConversationMetrics {
+  // Identity
+  conversation_id: string;
+  workspace_id: string;
+  customer_name: string;
+  customer_psid: string;
+  
+  // Flow
+  current_state: string;
+  outcome: 'active' | 'ordered' | 'abandoned' | 'handed_off';
+  message_count: number;
+  
+  // Timing
+  started_at: Date;
+  ended_at: Date | null;
+  duration_minutes: number;
+  avg_response_time: number;
+  
+  // Cost Breakdown
+  tier1_calls: number; // Hash match (free)
+  tier2_calls: number; // Visual features
+  tier3_calls: number; // OpenAI Vision
+  ai_director_calls: number; // GPT-4o-mini
+  total_cost: number;
+  
+  // Outcome
+  has_order: boolean;
+  order_amount: number | null;
+  drop_off_state: string | null; // If abandoned
+}
+🎨 Page Designs
+Page 1: Overview (/admin)
+Layout: 4-column grid
+
+┌─────────────────────────────────────────────────┐
+│ ADMIN DASHBOARD                      [Refresh]  │
+├─────────────────────────────────────────────────┤
+│                                                 │
+│  ┌────────────┐  ┌────────────┐  ┌──────────┐ │
+│  │ Total Users│  │  Today's   │  │  Active  │ │
+│  │     3      │  │   Cost     │  │   Chats  │ │
+│  │            │  │  ৳45.20    │  │    12    │ │
+│  └────────────┘  └────────────┘  └──────────┘ │
+│                                                 │
+│  ┌────────────┐  ┌────────────┐  ┌──────────┐ │
+│  │Total Convos│  │  Success   │  │  Errors  │ │
+│  │    127     │  │   Rate     │  │    2     │ │
+│  │            │  │   68.5%    │  │          │ │
+│  └────────────┘  └────────────┘  └──────────┘ │
+│                                                 │
+├─────────────────────────────────────────────────┤
+│ 📊 Cost Trend (Last 7 Days)                    │
+│ [Line chart: Daily cost]                       │
+│                                                 │
+├─────────────────────────────────────────────────┤
+│ 🔥 Recent Activity (Last 10 conversations)     │
+│                                                 │
+│  Fatema's Shop → Ayesha    ✅ Order  2m ago    │
+│  Nazia Fashion → Rifat     ❌ Drop   5m ago    │
+│  Sadia Store → Tasnim      ⏳ Active 10m ago   │
+│                                                 │
+└─────────────────────────────────────────────────┘
+Data Sources:
+
+Aggregate queries on workspaces, conversations, orders, api_usage
+Cached for 1 minute (fast refresh)
+Page 2: Users (/admin/users)
+Table view with sortable columns
+
+┌─────────────────────────────────────────────────────────────────┐
+│ ALL USERS                                          [+ Add Filter] │
+├─────────────────────────────────────────────────────────────────┤
+│ Workspace       │ Convos │ Success │ Cost (Today) │ Last Active │
+├─────────────────────────────────────────────────────────────────┤
+│ Fatema's Shop   │   23   │  69.6%  │   ৳12.50    │  2 min ago  │
+│ Nazia Fashion   │   15   │  60.0%  │   ৳8.20     │  10 min ago │
+│ Sadia Store     │    8   │  75.0%  │   ৳4.10     │  1 hr ago   │
+└─────────────────────────────────────────────────────────────────┘
+                                            [Click row → User detail]
+Filters:
+
+Active in last: 1h / 24h / 7d
+Success rate: >70% / 50-70% / <50%
+Cost: High to Low / Low to High
+Click workspace → Go to /admin/users/[id]
+
+Page 3: User Detail (/admin/users/[id])
+Single workspace deep dive
+
+┌─────────────────────────────────────────────────┐
+│ ← Back to Users                                 │
+├─────────────────────────────────────────────────┤
+│ Fatema's Shop                          [Active] │
+│ owner@email.com                                 │
+│ Created: 3 days ago                             │
+├─────────────────────────────────────────────────┤
+│                                                 │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────┐│
+│  │ Conversations│  │   Orders    │  │ Revenue ││
+│  │      23      │  │     16      │  │ ৳45,600 ││
+│  │              │  │  (69.6%)    │  │         ││
+│  └─────────────┘  └─────────────┘  └─────────┘│
+│                                                 │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────┐│
+│  │  Total Cost  │  │ Cost/Convo  │  │ Profit  ││
+│  │   ৳52.30     │  │   ৳2.27     │  │ ৳45,548 ││
+│  └─────────────┘  └─────────────┘  └─────────┘│
+│                                                 │
+├─────────────────────────────────────────────────┤
+│ 📊 Cost Breakdown                               │
+│  Tier 1 (Hash Match):     45 calls    ৳0.00    │
+│  Tier 2 (Visual):         12 calls    ৳3.60    │
+│  Tier 3 (Vision API):      8 calls    ৳10.00   │
+│  AI Director (GPT):      234 calls    ৳38.70   │
+│                                       ────────  │
+│  TOTAL:                               ৳52.30   │
+│                                                 │
+├─────────────────────────────────────────────────┤
+│ 💬 Conversations           [View All →]         │
+│                                                 │
+│  Ayesha Rahman    ✅ Order   12 msgs   ৳2.50   │
+│  Rifat Khan       ❌ Drop     5 msgs   ৳0.85   │
+│  Tasnim Akter     ⏳ Active   8 msgs   ৳1.20   │
+│                                                 │
+└─────────────────────────────────────────────────┘
+Actions:
+
+View all conversations button → /admin/users/[id]/conversations
+Click individual conversation → /admin/conversations/[conv_id]
+Page 4: User Conversations List (/admin/users/[id]/conversations)
+All conversations for ONE workspace
+
+┌─────────────────────────────────────────────────────────────────┐
+│ ← Back to Fatema's Shop                                         │
+├─────────────────────────────────────────────────────────────────┤
+│ ALL CONVERSATIONS (23)                     [Filter] [Sort]      │
+├─────────────────────────────────────────────────────────────────┤
+│ Customer      │ Messages │ State        │ Cost   │ Outcome      │
+├─────────────────────────────────────────────────────────────────┤
+│ Ayesha Rahman │    12    │ IDLE         │ ৳2.50  │ ✅ Order     │
+│ Rifat Khan    │     5    │ AWAITING_IMG │ ৳0.85  │ ❌ Abandoned │
+│ Tasnim Akter  │     8    │ COLLECT_SIZE │ ৳1.20  │ ⏳ Active    │
+│ Nusrat Jahan  │    15    │ IDLE         │ ৳3.10  │ ✅ Order     │
+│ ...           │    ...   │ ...          │ ...    │ ...          │
+└─────────────────────────────────────────────────────────────────┘
+                                    [Click row → Full conversation]
+Filters:
+
+Outcome: All / Orders / Active / Abandoned
+Cost: High to Low / Low to High
+Date: Today / Last 7d / All time
+Sort by:
+
+Recent first (default)
+Most expensive
+Longest duration
+Most messages
+Page 5: Conversation Detail (/admin/conversations/[id])
+Full chat transcript + analytics
+
+┌─────────────────────────────────────────────────┐
+│ ← Back                                          │
+├─────────────────────────────────────────────────┤
+│ Conversation with Ayesha Rahman                 │
+│ Workspace: Fatema's Shop                        │
+│                                                 │
+│ Started: 2 hours ago                            │
+│ Duration: 45 minutes                            │
+│ Messages: 12                                    │
+│ Outcome: ✅ Order (৳1,200)                      │
+│                                                 │
+├─────────────────────────────────────────────────┤
+│ 💰 COST BREAKDOWN                               │
+│                                                 │
+│  Tier 1 matches:      2 × ৳0.00  =  ৳0.00      │
+│  Tier 3 Vision:       1 × ৳1.25  =  ৳1.25      │
+│  AI Director calls:   5 × ৳0.25  =  ৳1.25      │
+│                                    ──────       │
+│  TOTAL COST:                       ৳2.50       │
+│                                                 │
+│  Revenue:                          ৳1,200      │
+│  Profit:                           ৳1,197.50   │
+│  ROI:                              47,900%     │
+│                                                 │
+├─────────────────────────────────────────────────┤
+│ 💬 CHAT TRANSCRIPT                              │
+│                                                 │
+│  [2:15 PM] Customer: Product টা স্টক আছে?      │
+│  [2:15 PM] Bot: আসসালামু আলাইকুম! আপনার নাম কি?│
+│             ↳ Fast Lane | 50ms | ৳0.00         │
+│                                                 │
+│  [2:16 PM] Customer: আয়েশা রহমান               │
+│  [2:16 PM] Bot: ধন্যবাদ আয়েশা! হ্যাঁ স্টক আছে।│
+│             ↳ Fast Lane | 45ms | ৳0.00         │
+│                                                 │
+│  [2:17 PM] Customer: [Image: screenshot.jpg]   │
+│  [2:18 PM] Bot: এটা হলো "Red Party Dress"...   │
+│             ↳ Tier 3 Vision | 3.2s | ৳1.25     │
+│                                                 │
+│  [2:20 PM] Customer: Size M দিবো                │
+│  [2:20 PM] Bot: ঠিক আছে। আপনার নাম, ফোন...    │
+│             ↳ AI Director | 800ms | ৳0.25      │
+│                                                 │
+│  [2:22 PM] Customer: আয়েশা রহমান              │
+│             01712345678                         │
+│             ঢাকা, মিরপুর-১০                      │
+│                                                 │
+│  [2:23 PM] Bot: Order confirmed! #ORD-1234     │
+│             ↳ Fast Lane | 60ms | ৳0.00         │
+│                                                 │
+├─────────────────────────────────────────────────┤
+│ 📊 STATE TRANSITIONS                            │
+│                                                 │
+│  IDLE → COLLECTING_NAME → AWAITING_IMAGES      │
+│  → PRODUCT_SELECTION → COLLECTING_SIZES        │
+│  → COLLECTING_INFO → ORDER_CONFIRMED           │
+│                                                 │
+│  Drop-off: None (completed successfully)       │
+│                                                 │
+└─────────────────────────────────────────────────┘
+Key Features:
+
+Each message shows: sender, timestamp, content
+Bot messages show: method used, latency, cost
+Cost breakdown at top
+State flow visualization
+ROI calculation (revenue - cost)
+Page 6: All Conversations (/admin/conversations)
+System-wide conversation view
+
+┌─────────────────────────────────────────────────────────────────┐
+│ ALL CONVERSATIONS (127)                                         │
+│                                                                 │
+│ Filters: [Workspace ▼] [Outcome ▼] [Date ▼]    [Search...]    │
+├─────────────────────────────────────────────────────────────────┤
+│ Workspace       │ Customer    │ State  │ Cost  │ Outcome       │
+├─────────────────────────────────────────────────────────────────┤
+│ Fatema's Shop   │ Ayesha R.   │ IDLE   │ ৳2.50 │ ✅ Order      │
+│ Nazia Fashion   │ Rifat K.    │ AWAIT  │ ৳0.85 │ ❌ Abandoned  │
+│ Sadia Store     │ Tasnim A.   │ COLL   │ ৳1.20 │ ⏳ Active     │
+│ Fatema's Shop   │ Nusrat J.   │ IDLE   │ ৳3.10 │ ✅ Order      │
+│ ...             │ ...         │ ...    │ ...   │ ...           │
+└─────────────────────────────────────────────────────────────────┘
+                                    [Click row → Full conversation]
+Use case: Cross-workspace analysis, finding patterns across all users
+
+Page 7: Costs (/admin/costs)
+Detailed cost analytics
+
+┌─────────────────────────────────────────────────┐
+│ COST ANALYSIS                         [Refresh] │
+├─────────────────────────────────────────────────┤
+│ 📊 SYSTEM-WIDE COSTS                            │
+│                                                 │
+│  Today:     ৳45.20  (12 conversations)          │
+│  This Week: ৳289.50 (87 conversations)          │
+│  This Month:৳1,245.30 (342 conversations)       │
+│                                                 │
+│  Average Cost per Conversation: ৳1.68           │
+│  Target: < ৳2.00 ✅                             │
+│                                                 │
+├─────────────────────────────────────────────────┤
+│ 📊 COST BREAKDOWN (This Month)                  │
+│                                                 │
+│  API Type              Calls    Total Cost      │
+│  ────────────────────────────────────────       │
+│  Tier 1 (Hash)          842     ৳0.00          │
+│  Tier 2 (Visual)        156     ৳46.80         │
+│  Tier 3 (Vision API)     87     ৳108.75        │
+│  AI Director (GPT)     1,234    ৳1,089.75      │
+│                                 ─────────       │
+│  TOTAL:                         ৳1,245.30      │
+│                                                 │
+├─────────────────────────────────────────────────┤
+│ 👥 PER USER BREAKDOWN                           │
+│                                                 │
+│  Workspace         Today    Week     Month      │
+│  ───────────────────────────────────────────   │
+│  Fatema's Shop    ৳12.50   ৳89.20   ৳456.80    │
+│  Nazia Fashion    ৳8.20    ৳54.30   ৳298.50    │
+│  Sadia Store      ৳4.10    ৳28.90   ৳156.40    │
+│                                                 │
+├─────────────────────────────────────────────────┤
+│ 🔥 MOST EXPENSIVE CONVERSATIONS                 │
+│                                                 │
+│  1. Fatema → Nusrat    15 msgs    ৳5.60       │
+│  2. Nazia → Ayesha     12 msgs    ৳4.80       │
+│  3. Sadia → Tasnim     18 msgs    ৳4.20       │
+│                                                 │
+│  [View details →]                               │
+│                                                 │
+└─────────────────────────────────────────────────┘
+Key Insights:
+
+Quick cost overview (today/week/month)
+API type breakdown (which costs most)
+Per-user comparison
+Most expensive conversations (identify outliers)
+Page 8: Errors (/admin/errors)
+Error monitoring & logs
+
+┌─────────────────────────────────────────────────────────────────┐
+│ ERROR LOGS                                         [Auto-refresh]│
+│                                                                 │
+│ Filter: [Severity ▼] [Workspace ▼] [Type ▼]    Last 24 hours  │
+├─────────────────────────────────────────────────────────────────┤
+│ Time      │ Workspace      │ Error                │ Details     │
+├─────────────────────────────────────────────────────────────────┤
+│ 2m ago    │ Fatema's Shop  │ Vision API timeout   │ [View]      │
+│           │ 🔴 CRITICAL    │ 3.2s → 30s           │             │
+│                                                                 │
+│ 5m ago    │ Nazia Fashion  │ Duplicate webhook    │ [View]      │
+│           │ 🟡 WARNING     │ Message ID: abc123   │             │
+│                                                                 │
+│ 10m ago   │ Sadia Store    │ DB connection failed │ [View]      │
+│           │ 🔴 CRITICAL    │ Order creation       │             │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────┐
+│ 📊 ERROR SUMMARY (Last 7 Days)                  │
+│                                                 │
+│  Total Errors: 47                               │
+│  Critical: 12                                   │
+│  Warnings: 35                                   │
+│                                                 │
+│  Most Common:                                   │
+│   1. Vision API timeout (8 occurrences)        │
+│   2. DB connection lost (5 occurrences)        │
+│   3. Invalid PSID (4 occurrences)              │
+│                                                 │
+└─────────────────────────────────────────────────┘
+Error Sources:
+
+Sentry (critical system errors)
+Database analytics_events (business logic errors)
+Real-time from webhooks (Facebook API issues)
+🔄 Data Flow Architecture
+Cost Tracking Flow
+1. Customer sends message
+   ↓
+2. Webhook handler receives
+   ↓
+3. Bot processes (orchestrator.ts)
+   ↓
+4. Uses Tier 1/2/3 or AI Director
+   ↓
+5. LOGS API USAGE:
+   INSERT INTO api_usage (
+     workspace_id,
+     conversation_id,  ← NEW
+     api_type,
+     cost,
+     metadata
+   )
+   ↓
+6. Updates conversation.cost_total (cached)
+   ↓
+7. Admin dashboard queries for analytics
+Success Rate Calculation
+sql
+-- Per workspace
+SELECT 
+  workspace_id,
+  COUNT(*) as total_conversations,
+  COUNT(CASE WHEN outcome = 'ordered' THEN 1 END) as successful,
+  (COUNT(CASE WHEN outcome = 'ordered' THEN 1 END)::float / 
+   COUNT(*)::float * 100) as success_rate
+FROM conversations
+WHERE created_at >= NOW() - INTERVAL '30 days'
+GROUP BY workspace_id;
+Response Time Calculation
+sql
+-- Average time between customer message and bot reply
+SELECT 
+  c.id,
+  AVG(
+    EXTRACT(EPOCH FROM (bot_msg.created_at - cust_msg.created_at))
+  ) as avg_response_seconds
+FROM conversations c
+JOIN messages cust_msg ON cust_msg.conversation_id = c.id 
+  AND cust_msg.sender_type = 'customer'
+JOIN messages bot_msg ON bot_msg.conversation_id = c.id 
+  AND bot_msg.sender_type = 'bot'
+  AND bot_msg.created_at > cust_msg.created_at
+WHERE c.created_at >= NOW() - INTERVAL '7 days'
+GROUP BY c.id;
+🎯 Key Design Principles
+1. Speed Over Perfection
+Manual refresh (no real-time complexity)
+Simple queries with indexes
+Cache frequently accessed data
+2. Learning First
+Easy to spot patterns
+Quick drill-down (umbrella structure)
+Full conversation visibility
+3. Cost Consciousness
+Every page shows costs
+Easy to identify expensive conversations
+Per-user cost tracking
+4. Desktop-First
+Large tables, detailed data
+Mobile responsive = nice-to-have
+Focus on clarity over mobile UX
+5. Minimal Dependencies
+Use existing stack (Next.js, Supabase, shadcn/ui)
+No new services (except Sentry already integrated)
+Reuse dashboard components where possible
+🚀 Implementation Priority
+Phase 1: Core (Day 1-2)
+✅ Database migrations (indexes, new columns)
+✅ Admin auth middleware
+✅ API routes (cost tracking, metrics)
+✅ Overview page (system health)
+✅ Users list + User detail
+✅ Conversation detail (full chat + cost)
+Deliverable: Can monitor first user end-to-end
+
+Phase 2: Analytics (Day 2-3)
+✅ Cost analysis page
+✅ All conversations page (filterable)
+✅ Error logs page
+✅ Success rate calculations
+Deliverable: Full analytics dashboard
+
+Phase 3: Polish (Day 3)
+✅ UI polish (consistent styling)
+✅ Loading states
+✅ Error handling
+✅ Testing with real data
+Deliverable: Production-ready admin dashboard
+
+📊 Success Metrics for Admin Dashboard
+After 1 week with 3 users:
+
+✅ Can see cost per conversation in <2 clicks
+✅ Can identify failing conversation patterns
+✅ Can spot expensive API calls
+✅ Can calculate actual vs estimated costs
+✅ Can see full chat history with context
+✅ Can export data for analysis (future)
+Decision Making Enabled:
+
+Should we optimize Tier 3 usage?
+Which conversation states cause drop-offs?
+Is Fast Lane hit rate meeting targets?
+Are users profitable at ৳599/month?
+What pricing adjustments needed?
+🎉 Final Architecture Summary
+What We're Building:
+
+8-page admin dashboard
+Real-time cost tracking (per conversation)
+Success rate analytics
+Full conversation visibility
+Error monitoring
+User performance comparison
+Why This Design:
+
+Simple: No complex real-time systems
+Fast: Indexes + caching
+Insightful: Umbrella drill-down structure
+Actionable: Clear metrics for decisions
+Maintainable: Clean Next.js structure
+Timeline: 2-3 days full-time (or 4-5 days with your schedule)
+
+✅ Next Steps
+This architecture is approved and ready to implement.
+
+Next artifact will be:
+
+Database migrations (exact SQL)
+New table structures
+Index creation
+Column additions
+Ready for Database Design artifact? 🚀
+
+================================================================================
+📝 REVISION 1: GEMINI.md ALIGNMENT & AUDIT FINDINGS
+================================================================================
+
+🔍 GEMINI.md Constitution Review
+────────────────────────────────────────────────────────────────────────────────
+
+✅ ALIGNED WITH CONSTITUTION:
+
+| Principle              | How Design Excels                                      |
+|------------------------|--------------------------------------------------------|
+| Plan Like Da Vinci     | Complete architecture documented before coding         |
+| Obsess Over Details    | Per-conversation cost, ROI, state transitions          |
+| Simplify Ruthlessly    | Manual refresh, minimal dependencies                   |
+| Think Different        | Umbrella drill-down structure is intuitive             |
+
+🔧 IMPROVEMENTS APPLIED:
+
+1. ROUTE NAMING FIX (Domain Model Alignment)
+   ──────────────────────────────────────────
+   OLD: /admin/users/[id]         ❌ Confusing (user = auth, not business)
+   NEW: /admin/workspaces/[id]    ✅ Matches database table name
+   
+   UPDATED ROUTE STRUCTURE:
+   /admin
+   ├─ /admin (Overview)
+   ├─ /admin/workspaces (All workspaces)           ← RENAMED
+   ├─ /admin/workspaces/[id] (Single workspace)    ← RENAMED
+   ├─ /admin/workspaces/[id]/conversations         ← RENAMED
+   ├─ /admin/conversations (All conversations)
+   ├─ /admin/conversations/[id] (Full chat detail)
+   ├─ /admin/costs (System-wide analysis)
+   └─ /admin/errors (Error logs)
+
+2. SYSTEM HEALTH INDICATOR (Added to Overview)
+   ──────────────────────────────────────────────
+   Add prominent banner at top of /admin:
+   
+   ┌─────────────────────────────────────────────────┐
+   │ 🟢 SYSTEM HEALTHY                               │
+   │   API: 120ms │ DB: Connected │ FB Webhook: OK  │
+   └─────────────────────────────────────────────────┘
+   
+   OR when issues detected:
+   
+   │ 🔴 2 CRITICAL ERRORS in last 15 minutes [View] │
+
+3. SIMPLIFIED COST DISPLAY
+   ──────────────────────────────────────────────
+   OLD (4 categories, includes always-free Tier 1):
+     Tier 1 (Hash Match):     45 calls    ৳0.00
+     Tier 2 (Visual):         12 calls    ৳3.60
+     Tier 3 (Vision API):      8 calls    ৳10.00
+     AI Director (GPT):      234 calls    ৳38.70
+   
+   NEW (3 categories, clearer labels):
+     Cache Hits:       45 calls   (free)
+     Vision API:       20 calls   ৳13.60
+     AI Director:     234 calls   ৳38.70
+
+
+================================================================================
+🗂️ EXISTING ADMIN PAGE AUDIT
+================================================================================
+
+Files Analyzed:
+──────────────────────────────────────────────────────────────────────────────
+• app/dashboard/admin/page.tsx       (421 lines)
+• app/api/admin/usage/route.ts       (118 lines)
+• app/api/admin/users/route.ts       (72 lines)
+
+
+✅ REUSABLE COMPONENTS (Migrate):
+──────────────────────────────────────────────────────────────────────────────
+| Component                    | Current File        | New Location          |
+|------------------------------|---------------------|-----------------------|
+| Cost History AreaChart       | page.tsx L209-250   | /admin/costs          |
+| Cost Distribution PieChart   | page.tsx L252-298   | /admin/costs          |
+| Detailed Breakdown Table     | page.tsx L300-328   | /admin/costs          |
+| User List Table + Search     | page.tsx L355-415   | /admin/workspaces     |
+| AdminSkeleton component      | components/         | Reuse everywhere      |
+| BDT conversion (USD * 120)   | page.tsx L62        | Keep in all pages     |
+
+
+🐛 CRITICAL ISSUES TO FIX:
+──────────────────────────────────────────────────────────────────────────────
+
+Issue 1: WRONG SCOPE - Usage API fetches ONE workspace
+────────────────────────────────────────────────────────
+Current code (api/admin/usage/route.ts line 24):
+    const workspaceId = workspaceData.workspace_id;
+    // This fetches only ADMIN'S workspace, not ALL workspaces!
+
+FIX: New API must aggregate across ALL workspaces for system view.
+    // Remove workspace filter for admin view
+    const { data: usageData } = await supabase
+      .from('api_usage')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+
+Issue 2: HARDCODED ADMIN EMAIL
+────────────────────────────────────────────────────────
+Current code (page.tsx line 65):
+    const ADMIN_EMAIL = 'admin@gmail.com';  // ❌ Hardcoded
+
+FIX: Already addressed in design - use ADMIN_EMAILS env var in middleware.
+
+
+Issue 3: NO DRILL-DOWN CAPABILITY
+────────────────────────────────────────────────────────
+Current: Flat view, no click-to-expand
+New: Workspace → Conversations → Single Conversation
+
+
+Issue 4: NO CONVERSATION ANALYTICS
+────────────────────────────────────────────────────────
+Current: Zero conversation data
+New: Success rate, drop-off analysis, response time metrics
+
+
+================================================================================
+🚀 MIGRATION PATH
+================================================================================
+
+Step 1: Create New /admin Routes Structure
+──────────────────────────────────────────────────────────────────────────────
+app/
+├── admin/                              ← NEW FOLDER (separate from dashboard)
+│   ├── layout.tsx                      ← Admin-specific layout
+│   ├── page.tsx                        ← Overview
+│   ├── workspaces/
+│   │   ├── page.tsx                    ← All workspaces list
+│   │   └── [id]/
+│   │       ├── page.tsx                ← Workspace detail
+│   │       └── conversations/page.tsx  ← Workspace's conversations
+│   ├── conversations/
+│   │   ├── page.tsx                    ← All conversations (global)
+│   │   └── [id]/page.tsx               ← Single conversation detail
+│   ├── costs/page.tsx                  ← Cost analytics
+│   └── errors/page.tsx                 ← Error logs
+
+
+Step 2: Refactor API Routes
+──────────────────────────────────────────────────────────────────────────────
+OLD API                      → NEW API
+/api/admin/usage             → /api/admin/costs (aggregate ALL workspaces)
+/api/admin/users             → /api/admin/workspaces (add conversation counts)
+(none)                       → /api/admin/conversations/[id] (chat + costs)
+(none)                       → /api/admin/overview (aggregated system stats)
+
+
+Step 3: Add Redirect for Old Route
+──────────────────────────────────────────────────────────────────────────────
+// In middleware.ts or next.config.js
+if (pathname === '/dashboard/admin') {
+  return redirect('/admin');
+}
+
+
+Step 4: Delete Old Files (After 1 Week)
+──────────────────────────────────────────────────────────────────────────────
+DELETE: app/dashboard/admin/page.tsx
+DELETE: app/dashboard/admin/loading.tsx
+KEEP:   app/api/admin/usage/route.ts   ← May repurpose for per-workspace usage
+
+
+================================================================================
+📊 FEEDBACK LOOP (Post-Launch)
+================================================================================
+
+Add tiny feedback widget on key pages:
+
+┌────────────────────────────────────────┐
+│ Was this page useful?  [👍] [👎]       │
+└────────────────────────────────────────┘
+
+Log to analytics_events table:
+  INSERT INTO analytics_events (event_type, metadata)
+  VALUES ('admin_feedback', '{"page": "/admin/costs", "helpful": true}');
+
+
+================================================================================
+✅ DESIGN DOCUMENT STATUS
+================================================================================
+
+| Section                        | Status      |
+|--------------------------------|-------------|
+| Goals & Purpose                | ✅ Complete |
+| Route Structure                | ✅ Updated  |
+| Authentication                 | ✅ Complete |
+| Data Architecture              | ✅ Complete |
+| Page Designs (8 pages)         | ✅ Complete |
+| Data Flow Architecture         | ✅ Complete |
+| Design Principles              | ✅ Complete |
+| Implementation Priority        | ✅ Complete |
+| GEMINI.md Alignment Review     | ✅ Added    |
+| Existing Admin Audit           | ✅ Added    |
+| Migration Path                 | ✅ Added    |
+
+NEXT ARTIFACT: Database Migrations (schema.sql updates)
+
+

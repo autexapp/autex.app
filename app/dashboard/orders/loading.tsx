@@ -1,5 +1,5 @@
-import { OrdersSkeleton } from "@/components/skeletons/orders-skeleton"
+import { PremiumLoader } from "@/components/ui/premium/premium-loader"
 
-export default function OrdersLoading() {
-  return <OrdersSkeleton />
+export default function Loading() {
+  return <PremiumLoader />
 }

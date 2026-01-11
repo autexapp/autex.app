@@ -93,6 +93,9 @@ export interface FastLaneResult {
     phone?: string;
     address?: string;
   };
+  
+  /** Interruption category handled (for repeat detection) */
+  interruptionCategory?: string;
 }
 
 // ============================================
@@ -268,12 +271,46 @@ function handleGlobalInterruption(
     return null;
   }
   
+  // ============================================
+  // HYBRID ESCALATION - Part 1: Complex Question Detection
+  // ============================================
+  // If message is long and contains "নাকি"/"or"/multiple clauses,
+  // it's likely a nuanced question that Fast Lane can't handle properly.
+  // These should go to AI Director for intelligent response.
+  
+  const isComplexQuestion = 
+    input.length > 80 && 
+    (input.includes('নাকি') || 
+     input.includes(' or ') || 
+     input.includes('আলাদা আলাদা') ||
+     input.includes('ekbar') ||
+     input.includes('একবার') ||
+     input.includes('প্রতিটা') ||
+     input.includes('protita'));
+  
+  if (isComplexQuestion) {
+    console.log(`⚡ [FAST LANE] Complex question detected, escalating to AI Director`);
+    return null; // Skip Fast Lane, let AI Director handle
+  }
+  
   // Check interruption type
   const interruptionType = getInterruptionType(input);
   const isDetailReq = isDetailsRequest(input);
   
   if (!interruptionType && !isDetailReq) {
     return null;
+  }
+  
+  // ============================================
+  // HYBRID ESCALATION - Part 2: Repeat Question Detection
+  // ============================================
+  // If user already received a Fast Lane response for this category,
+  // they're likely not satisfied and need AI Director's help.
+  
+  const recentCategories = context.lastFastLaneCategories || [];
+  if (interruptionType && recentCategories.includes(interruptionType)) {
+    console.log(`⚡ [FAST LANE] Repeat ${interruptionType} question detected, escalating to AI Director`);
+    return null; // Skip Fast Lane, let AI Director handle
   }
   
   let response = '';
@@ -333,6 +370,12 @@ function handleGlobalInterruption(
   const rePrompt = getRePrompt(currentState, context, settings);
   const finalResponse = response + (rePrompt ? `\n\n${rePrompt}` : '');
   
+  // Track this category for repeat detection
+  // Keep only last 3 categories (FIFO queue)
+  const updatedCategories = interruptionType 
+    ? [...(context.lastFastLaneCategories || []), interruptionType].slice(-3)
+    : context.lastFastLaneCategories;
+  
   return {
     matched: true,
     action: 'CONFIRM', // 'CONFIRM' just means "Handled, stay in state" essentially? 
@@ -344,7 +387,9 @@ function handleGlobalInterruption(
     updatedContext: {
       ...context,
       state: currentState,
+      lastFastLaneCategories: updatedCategories,
     },
+    interruptionCategory: interruptionType || undefined,
   };
 }
 
