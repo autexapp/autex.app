@@ -89,6 +89,28 @@ function getInitials(name?: string, email?: string): string {
   return 'U'
 }
 
+// Gradient colors for avatars - premium vibrant palette
+const AVATAR_GRADIENTS = [
+  'from-violet-500 to-purple-600',
+  'from-pink-500 to-rose-600',
+  'from-orange-500 to-amber-600',
+  'from-emerald-500 to-teal-600',
+  'from-blue-500 to-indigo-600',
+  'from-cyan-500 to-blue-600',
+  'from-fuchsia-500 to-pink-600',
+  'from-lime-500 to-green-600',
+]
+
+// Get consistent gradient based on string hash
+function getAvatarGradient(str: string): string {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const index = Math.abs(hash) % AVATAR_GRADIENTS.length
+  return AVATAR_GRADIENTS[index]
+}
+
 export function TopBar({ title }: TopBarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
@@ -250,6 +272,7 @@ export function TopBar({ title }: TopBarProps) {
 
   const displayName = userData?.business_name || 'Autex AI'
   const initials = getInitials(displayName, userData?.email)
+  const avatarGradient = getAvatarGradient(displayName + (userData?.email || ''))
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-white/5 bg-background/60 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
@@ -473,7 +496,10 @@ export function TopBar({ title }: TopBarProps) {
               <Button variant="ghost" className="relative h-9 w-9 rounded-full ring-2 ring-transparent hover:ring-border/50 transition-all pl-0 pr-0 overflow-hidden group">
                 <Avatar className="h-9 w-9 transition-transform duration-300 group-hover:scale-105">
                   <AvatarImage src={userData?.avatar_url} alt={displayName} className="object-cover" />
-                  <AvatarFallback className="bg-gradient-to-br from-zinc-100 to-zinc-200 dark:from-zinc-800 dark:to-zinc-900 text-zinc-900 dark:text-zinc-100 font-medium text-sm border border-zinc-200 dark:border-zinc-700">
+                  <AvatarFallback className={cn(
+                    "bg-gradient-to-br text-white font-semibold text-sm shadow-inner",
+                    avatarGradient
+                  )}>
                     {initials}
                   </AvatarFallback>
                 </Avatar>
@@ -481,8 +507,15 @@ export function TopBar({ title }: TopBarProps) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-60 p-2 rounded-xl border-border/60 shadow-xl backdrop-blur-xl bg-background/95">
               <div className="flex items-center gap-3 p-2 mb-1">
-                <div className="h-10 w-10 rounded-full overflow-hidden bg-muted">
-                    <Image src={userData?.avatar_url || '/placeholder-avatar.png'} alt="Profile" width={40} height={40} className="object-cover h-full w-full" />
+                <div className={cn(
+                  "h-10 w-10 rounded-full overflow-hidden flex items-center justify-center font-semibold text-white text-sm bg-gradient-to-br shadow-inner",
+                  userData?.avatar_url ? '' : avatarGradient
+                )}>
+                  {userData?.avatar_url ? (
+                    <Image src={userData.avatar_url} alt="Profile" width={40} height={40} className="object-cover h-full w-full" />
+                  ) : (
+                    <span>{initials}</span>
+                  )}
                 </div>
                 <div className="flex flex-col overflow-hidden">
                   <span className="font-semibold text-sm truncate">{displayName}</span>
@@ -503,7 +536,7 @@ export function TopBar({ title }: TopBarProps) {
                 </Link>
               </DropdownMenuItem>
                <DropdownMenuItem asChild className="rounded-lg cursor-pointer">
-                <Link href="/help">
+                <Link href="/dashboard/help">
                   <Bot className="mr-2 h-4 w-4 text-muted-foreground" />
                   Help & Support
                 </Link>

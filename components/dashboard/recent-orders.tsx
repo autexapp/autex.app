@@ -75,45 +75,47 @@ export function RecentOrders() {
           <>
             {/* Desktop Table (Premium Glass Rows) */}
             <div className="hidden md:block overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full table-fixed">
                 <thead>
                   <tr className="text-left border-b border-border/50">
-                    <th className="py-4 pl-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Order ID</th>
-                    <th className="py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Customer</th>
-                    <th className="py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Product</th>
-                    <th className="py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Amount</th>
-                    <th className="py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
-                    <th className="py-4 pr-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider text-right">Time</th>
+                    <th className="py-3 pl-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider w-[90px]">Order ID</th>
+                    <th className="py-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider w-[120px]">Customer</th>
+                    <th className="py-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider w-[150px]">Product</th>
+                    <th className="py-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider w-[70px]">Amount</th>
+                    <th className="py-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider w-[80px]">Status</th>
+                    <th className="py-3 pr-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-right w-[100px]">Time</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/30">
                   {orders.map((order) => (
                     <tr key={order.id} className="group hover:bg-muted/30 transition-colors">
-                      <td className="py-4 pl-4">
+                      <td className="py-3 pl-3">
                         <Link
                           href={`/dashboard/orders`}
-                          className="font-mono text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                          className="font-mono text-xs font-medium text-primary hover:text-primary/80 transition-colors"
                         >
                           #{order.orderNumber}
                         </Link>
                       </td>
-                      <td className="py-4">
-                        <p className="font-medium text-sm text-foreground">{order.customer}</p>
+                      <td className="py-3 pr-2">
+                        <p className="font-medium text-xs text-foreground line-clamp-2 leading-snug">{order.customer}</p>
                       </td>
-                      <td className="py-4 text-sm text-muted-foreground max-w-[200px] truncate" title={order.product}>{order.product}</td>
-                      <td className="py-4 font-mono text-sm font-bold text-foreground">৳{order.amount.toLocaleString()}</td>
-                      <td className="py-4">
+                      <td className="py-3 pr-2">
+                        <p className="text-xs text-muted-foreground line-clamp-2 leading-snug">{order.product}</p>
+                      </td>
+                      <td className="py-3 font-mono text-xs font-bold text-foreground">৳{order.amount.toLocaleString()}</td>
+                      <td className="py-3">
                         <Badge 
                           variant="secondary" 
                           className={cn(
-                            "text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider shadow-none border transition-colors", 
+                            "text-[9px] px-1.5 py-0.5 font-bold uppercase tracking-wider shadow-none border transition-colors", 
                             statusConfig[order.status]?.className || statusConfig.pending.className
                           )}
                         >
                           {statusConfig[order.status]?.label || order.status}
                         </Badge>
                       </td>
-                      <td className="py-4 pr-4 text-xs text-muted-foreground text-right font-mono">
+                      <td className="py-3 pr-3 text-[10px] text-muted-foreground text-right font-mono whitespace-nowrap">
                         {formatDistanceToNow(new Date(order.date), { addSuffix: true })}
                       </td>
                     </tr>

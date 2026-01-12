@@ -1222,7 +1222,24 @@ async function createOrderInDb(
   const orderId = orderResult.id;
   console.log(`✅ Order created with ID: ${orderId}`);
   
-  // Insert order items
+  // Fetch product images for all cart items
+  const productIds = cart.map(item => item.productId);
+  const { data: productsWithImages } = await supabase
+    .from('products')
+    .select('id, image_urls')
+    .in('id', productIds);
+  
+  // Create a map of productId -> imageUrl for quick lookup
+  const imageUrlMap: Record<string, string> = {};
+  if (productsWithImages) {
+    for (const p of productsWithImages) {
+      if (p.image_urls && p.image_urls.length > 0) {
+        imageUrlMap[p.id] = p.image_urls[0];
+      }
+    }
+  }
+  
+  // Insert order items with correct product images
   const orderItems = cart.map(item => {
     const itemAny = item as any;
     return {
@@ -1234,7 +1251,7 @@ async function createOrderInDb(
       subtotal: item.productPrice * item.quantity,
       selected_size: itemAny.selectedSize || itemAny.variations?.size || null,
       selected_color: itemAny.selectedColor || itemAny.variations?.color || null,
-      product_image_url: item.imageUrl || null,
+      product_image_url: imageUrlMap[item.productId] || item.imageUrl || null,
     };
   });
   

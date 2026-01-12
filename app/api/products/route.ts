@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     // Build query
     let query = supabase
       .from('products')
-      .select('id, name, price, stock_quantity, image_urls, colors, sizes, size_stock, created_at, updated_at', { count: 'exact' })
+      .select('id, name, price, stock_quantity, image_urls, colors, sizes, size_stock, variant_stock, created_at, updated_at', { count: 'exact' })
       .eq('workspace_id', workspace.id);
 
     // Apply filters

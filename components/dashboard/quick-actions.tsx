@@ -10,7 +10,7 @@ interface QuickActionsProps {
 
 export function QuickActions({ botActive }: QuickActionsProps) {
   return (
-    <SmartCard className="h-full">
+    <SmartCard>
       <CardHeader className="pb-4 border-b border-border/40">
         <div className="flex items-center gap-2.5">
           <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400">
