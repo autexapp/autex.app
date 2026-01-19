@@ -2,9 +2,10 @@
  * Trial Expired Email Template
  * 
  * Sent when the trial period ends.
+ * Design matches Autex Dashboard aesthetic.
  */
 
-import { Button, Heading, Text, Hr } from '@react-email/components';
+import { Button, Heading, Text, Hr, Section } from '@react-email/components';
 import * as React from 'react';
 import { BaseTemplate } from './base-template';
 
@@ -14,101 +15,152 @@ interface TrialExpiredEmailProps {
 
 export const TrialExpiredEmail = ({ businessName }: TrialExpiredEmailProps) => (
   <BaseTemplate preview="Your Autex AI trial has expired. Renew now to keep your bot running.">
-    <Heading style={heading}>😔 Your Trial Has Expired</Heading>
+    {/* Header Badge */}
+    <Section style={badgeContainer}>
+      <Text style={badge}>⚠️ Action Required</Text>
+    </Section>
+    
+    <Heading style={heading}>Your Trial Has Expired</Heading>
     
     <Text style={paragraph}>
-      Hi {businessName},
+      Hi <strong>{businessName}</strong>,
     </Text>
     
     <Text style={paragraph}>
       Your Autex AI trial has ended. Your bot has stopped responding to customers.
     </Text>
     
-    <Text style={warningBox}>
-      ⚠️ <strong>Your customers are waiting!</strong> Reactivate now to avoid losing sales.
-    </Text>
+    {/* Warning Box */}
+    <Section style={warningBox}>
+      <Text style={warningBoxText}>
+        🛑 <strong>Bot is offline.</strong> Customers are not receiving automated responses.
+      </Text>
+    </Section>
     
-    <Hr style={hr} />
+    <Hr style={divider} />
     
-    <Text style={paragraph}>
-      <strong>Don't worry — all your data is safe:</strong>
-    </Text>
+    <Text style={sectionTitle}>Good News — Your Data is Safe:</Text>
     
-    <Text style={listItem}>✅ Your products are saved</Text>
-    <Text style={listItem}>✅ Your conversations are preserved</Text>
-    <Text style={listItem}>✅ Your orders are intact</Text>
-    <Text style={listItem}>✅ Just pay to reactivate instantly</Text>
+    <Section style={checklistContainer}>
+      <Text style={checklistItem}>✅ Products — Saved</Text>
+      <Text style={checklistItem}>✅ Conversations — Preserved</Text>
+      <Text style={checklistItem}>✅ Orders — Intact</Text>
+      <Text style={checklistItem}>✅ Settings — Ready</Text>
+    </Section>
     
-    <Hr style={hr} />
+    <Section style={buttonContainer}>
+      <Button style={primaryButton} href="https://wa.me/8801977994057?text=Hi%2C%20my%20trial%20expired.%20I%20want%20to%20subscribe.">
+        💬 Reactivate on WhatsApp
+      </Button>
+    </Section>
     
-    <Text style={paragraph}>
-      <strong>Ready to continue?</strong> Message us on WhatsApp and we'll activate your subscription within 30 minutes!
-    </Text>
-    
-    <Button style={button} href="https://wa.me/8801977994057?text=Hi%2C%20my%20trial%20expired.%20I%20want%20to%20subscribe.">
-      💬 Reactivate on WhatsApp
-    </Button>
-    
-    <Text style={finePrint}>
-      Plans start at ৳499/mo. Pay via bKash to 01915969330.
+    <Text style={helpText}>
+      Plans start at <strong>৳499/mo</strong>. Pay via bKash to <strong>01915969330</strong>.
+      <br />We'll reactivate within 30 minutes!
     </Text>
   </BaseTemplate>
 );
 
-// Styles
+// ============================================
+// STYLES
+// ============================================
+
+const badgeContainer = {
+  textAlign: 'center' as const,
+  marginBottom: '16px',
+};
+
+const badge = {
+  display: 'inline-block',
+  backgroundColor: '#fef2f2', // red-50
+  color: '#dc2626', // red-600
+  padding: '6px 16px',
+  borderRadius: '9999px',
+  fontSize: '14px',
+  fontWeight: '600' as const,
+  margin: '0',
+};
+
 const heading = {
-  fontSize: '24px',
+  fontSize: '28px',
   fontWeight: '700' as const,
-  color: '#18181b',
+  color: '#18181b', // zinc-900
   textAlign: 'center' as const,
   margin: '0 0 24px',
+  lineHeight: '1.3',
+  letterSpacing: '-0.025em',
 };
 
 const paragraph = {
   fontSize: '16px',
   lineHeight: '1.6',
-  color: '#3f3f46',
+  color: '#3f3f46', // zinc-700
   margin: '0 0 16px',
 };
 
 const warningBox = {
-  backgroundColor: '#fef2f2',
-  padding: '16px',
-  borderRadius: '8px',
-  fontSize: '16px',
-  color: '#dc2626',
+  backgroundColor: '#fef2f2', // red-50
+  padding: '16px 20px',
+  borderRadius: '12px',
   margin: '24px 0',
-  border: '1px solid #fecaca',
+  border: '1px solid #fecaca', // red-200
 };
 
-const hr = {
-  borderColor: '#e4e4e7',
-  margin: '24px 0',
-};
-
-const listItem = {
+const warningBoxText = {
   fontSize: '15px',
-  color: '#3f3f46',
-  margin: '8px 0',
+  color: '#dc2626', // red-600
+  margin: '0',
+  textAlign: 'center' as const,
 };
 
-const button = {
-  backgroundColor: '#18181b',
-  borderRadius: '8px',
+const divider = {
+  borderColor: '#e4e4e7', // zinc-200
+  margin: '28px 0',
+};
+
+const sectionTitle = {
+  fontSize: '14px',
+  fontWeight: '600' as const,
+  color: '#71717a', // zinc-500
+  textTransform: 'uppercase' as const,
+  letterSpacing: '0.05em',
+  margin: '0 0 16px',
+};
+
+const checklistContainer = {
+  margin: '0 0 24px',
+};
+
+const checklistItem = {
+  fontSize: '15px',
+  color: '#3f3f46', // zinc-700
+  margin: '8px 0',
+  paddingLeft: '4px',
+};
+
+const buttonContainer = {
+  textAlign: 'center' as const,
+  margin: '28px 0 16px',
+};
+
+const primaryButton = {
+  backgroundColor: '#18181b', // zinc-900
+  borderRadius: '10px',
   color: '#ffffff',
-  fontSize: '16px',
+  fontSize: '15px',
   fontWeight: '600' as const,
   textDecoration: 'none',
   textAlign: 'center' as const,
-  display: 'block',
-  padding: '14px 24px',
-  margin: '24px auto',
+  display: 'inline-block',
+  padding: '14px 28px',
 };
 
-const finePrint = {
+const helpText = {
   fontSize: '13px',
-  color: '#71717a',
+  color: '#71717a', // zinc-500
   textAlign: 'center' as const,
+  margin: '0',
+  lineHeight: '1.6',
 };
 
 export default TrialExpiredEmail;

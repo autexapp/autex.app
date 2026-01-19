@@ -228,3 +228,95 @@ export async function sendSubscriptionExpiredEmail(
     return { success: false, error: String(err) };
   }
 }
+
+// ============================================
+// ADMIN NOTIFICATION EMAILS
+// ============================================
+
+import { AdminNewUserEmail } from './templates/admin-new-user';
+import { AdminSubscriptionEmail } from './templates/admin-subscription';
+
+// Admin email address for notifications
+const ADMIN_EMAIL = process.env.ADMIN_NOTIFICATION_EMAIL || 'admin@gmail.com';
+
+/**
+ * Send admin notification for new user signup
+ */
+export async function sendAdminNewUserEmail(
+  userName: string,
+  userEmail: string,
+  businessName: string,
+  trialEndsAt: Date
+): Promise<SendEmailResult> {
+  try {
+    const { data, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: ADMIN_EMAIL,
+      subject: `🆕 New User: ${businessName} just signed up!`,
+      react: AdminNewUserEmail({
+        userName,
+        userEmail,
+        businessName,
+        signupDate: formatDate(new Date()),
+        trialEndsAt: formatDate(trialEndsAt),
+      }),
+    });
+
+    if (error) {
+      console.error('[Email] Failed to send admin new user email:', error);
+      return { success: false, error: error.message };
+    }
+
+    console.log(`[Email] Admin new user notification sent, ID: ${data?.id}`);
+    return { success: true, id: data?.id };
+  } catch (err) {
+    console.error('[Email] Error sending admin new user email:', err);
+    return { success: false, error: String(err) };
+  }
+}
+
+/**
+ * Send admin notification for subscription activation
+ */
+export async function sendAdminSubscriptionEmail(
+  businessName: string,
+  userEmail: string,
+  planName: string,
+  amount: number,
+  paymentMethod: string,
+  durationDays: number,
+  expiresAt: Date,
+  transactionId?: string,
+  isRenewal: boolean = false
+): Promise<SendEmailResult> {
+  try {
+    const { data, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: ADMIN_EMAIL,
+      subject: `💰 ${isRenewal ? 'Renewal' : 'New Sale'}: ${businessName} - ৳${amount}`,
+      react: AdminSubscriptionEmail({
+        businessName,
+        userEmail,
+        planName,
+        amount,
+        paymentMethod,
+        durationDays,
+        expiresAt: formatDate(expiresAt),
+        transactionId,
+        isRenewal,
+      }),
+    });
+
+    if (error) {
+      console.error('[Email] Failed to send admin subscription email:', error);
+      return { success: false, error: error.message };
+    }
+
+    console.log(`[Email] Admin subscription notification sent, ID: ${data?.id}`);
+    return { success: true, id: data?.id };
+  } catch (err) {
+    console.error('[Email] Error sending admin subscription email:', err);
+    return { success: false, error: String(err) };
+  }
+}
+

@@ -417,7 +417,7 @@ function getRePrompt(
       return `আপনার ডেলিভারি ঠিকানাটি দিন। ${emoji ? '📍' : ''}`;
       
     case 'COLLECTING_PAYMENT_DIGITS':
-      return `আপনার পেমেন্ট এর লাস্ট ২ ডিজিট দিন।`;
+      return `আপনার bKash/Nagad নম্বরের শেষ ২ ডিজিট দিন।`;
       
     case 'AWAITING_CUSTOMER_DETAILS':
       return `অনুগ্রহ করে আপনার তথ্যগুলো দিন (নাম, ফোন, ঠিকানা)।`;
@@ -949,10 +949,10 @@ function handleConfirmingOrder(
       action: 'CONFIRM', // This will be mapped to TRANSITION_STATE in orchestrator
       response: settings?.fastLaneMessages?.paymentInstructions 
         ? settings.fastLaneMessages.paymentInstructions
-            .replace('{totalAmount}', context.checkout.totalAmount?.toString() || '0')
+            .replace('{deliveryCharge}', context.checkout.deliveryCharge?.toString() || '60')
             .replace('{paymentNumber}', '{{PAYMENT_DETAILS}}') // Placeholder for orchestrator to fill
         : Replies.PAYMENT_INSTRUCTIONS({
-            totalAmount: context.checkout.totalAmount,
+            deliveryCharge: context.checkout.deliveryCharge,
             paymentNumber: '{{PAYMENT_DETAILS}}',
           }),
       newState: 'COLLECTING_PAYMENT_DIGITS',

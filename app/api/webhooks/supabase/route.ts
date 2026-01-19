@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { sendWelcomeEmail } from '@/lib/email/send';
+import { sendWelcomeEmail, sendAdminNewUserEmail } from '@/lib/email/send';
 
 // Webhook payload types
 interface WebhookPayload {
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Send welcome email
+      // Send welcome email to user
       const result = await sendWelcomeEmail(
         user.email,
         workspaceName,
@@ -73,10 +73,21 @@ export async function POST(request: NextRequest) {
 
       console.log('[Webhook] Welcome email result:', result);
 
+      // Send admin notification about new signup
+      const adminResult = await sendAdminNewUserEmail(
+        user.user_metadata?.full_name || workspaceName,
+        user.email,
+        workspaceName,
+        new Date(trialEndsAt)
+      );
+
+      console.log('[Webhook] Admin notification result:', adminResult);
+
       return NextResponse.json({
         success: true,
         emailSent: result.success,
         emailId: result.id,
+        adminNotified: adminResult.success,
         workspace: workspaceId,
       });
     }

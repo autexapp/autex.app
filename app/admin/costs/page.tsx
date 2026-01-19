@@ -1,14 +1,19 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { cn } from "@/lib/utils"
+import { SmartCard } from "@/components/ui/premium/smart-card"
+import { CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { StatsCard } from "@/components/dashboard/stats-card"
+import { PremiumLoader } from "@/components/ui/premium/premium-loader"
 import {
   DollarSign,
   TrendingUp,
   RefreshCw,
-  Loader2,
   PieChart as PieChartIcon,
+  Target,
+  Building2,
 } from "lucide-react"
 import {
   AreaChart,
@@ -16,13 +21,13 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
   PieChart,
   Pie,
   Cell,
-  Legend,
+  BarChart,
+  Bar,
 } from "recharts"
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import Link from "next/link"
 
 interface CostsData {
@@ -56,7 +61,7 @@ interface CostsData {
   }>
 }
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
+const COLORS = ['hsl(var(--chart-1))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))', 'hsl(var(--chart-4))', 'hsl(var(--chart-5))'];
 
 export default function AdminCostsPage() {
   const [data, setData] = useState<CostsData | null>(null)
@@ -85,26 +90,28 @@ export default function AdminCostsPage() {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    )
+    return <PremiumLoader />
   }
 
+  const targetCost = 2.0 // Target cost per conversation in BDT
+  const isUnderTarget = parseFloat(data?.summary.avgCostPerConversation || '0') <= targetCost
+
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="p-4 lg:p-6 space-y-8 max-w-[1600px] mx-auto">
+      {/* Header - Editorial Style */}
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 border-b border-border/40 pb-6">
         <div>
-          <h1 className="text-2xl font-bold">Cost Analysis</h1>
-          <p className="text-muted-foreground">System-wide API usage and spending</p>
+          <h2 className="text-3xl lg:text-4xl font-serif text-foreground tracking-tight">
+            Cost Analysis
+          </h2>
+          <p className="text-sm text-muted-foreground mt-2">System-wide API usage and spending</p>
         </div>
         <Button 
           variant="outline" 
           size="sm" 
           onClick={() => fetchData(true)}
           disabled={refreshing}
+          className="h-9 font-medium shadow-sm active:scale-95 transition-all"
         >
           <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
           Refresh
@@ -112,206 +119,211 @@ export default function AdminCostsPage() {
       </div>
 
       {/* Cost Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Today</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">৳{(data?.summary.todayCost || 0).toFixed(2)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">This Week</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">৳{(data?.summary.weekCost || 0).toFixed(2)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">This Month</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">৳{(data?.summary.monthCost || 0).toFixed(2)}</div>
-            <p className="text-sm text-muted-foreground mt-1">
-              ৳{data?.summary.avgCostPerConversation}/conversation avg
-            </p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatsCard
+          title="Today"
+          value={`৳${(data?.summary.todayCost || 0).toFixed(4)}`}
+          trend={{ value: "", direction: "up", isPositive: true }}
+          comparison="API cost today"
+          icon={DollarSign}
+          isCurrency
+        />
+        <StatsCard
+          title="This Week"
+          value={`৳${(data?.summary.weekCost || 0).toFixed(4)}`}
+          trend={{ value: "", direction: "up", isPositive: true }}
+          comparison="Last 7 days"
+          icon={TrendingUp}
+          isCurrency
+        />
+        <StatsCard
+          title="This Month"
+          value={`৳${(data?.summary.monthCost || 0).toFixed(4)}`}
+          trend={{ value: "", direction: "up", isPositive: true }}
+          comparison={`${data?.summary.conversationsThisMonth || 0} conversations`}
+          icon={DollarSign}
+          isCurrency
+        />
+        <StatsCard
+          title="Avg per Conversation"
+          value={`৳${data?.summary.avgCostPerConversation || '0.00'}`}
+          trend={{ 
+            value: isUnderTarget ? "On Target" : "Over Target", 
+            direction: isUnderTarget ? "down" : "up", 
+            isPositive: isUnderTarget 
+          }}
+          comparison={`Target: ৳${targetCost.toFixed(2)}`}
+          icon={Target}
+          isCurrency
+        />
       </div>
-
-      {/* Target Check */}
-      <Card className={Number(data?.summary.avgCostPerConversation || 0) <= 2 
-        ? 'bg-green-500/10 border-green-500/20' 
-        : 'bg-yellow-500/10 border-yellow-500/20'
-      }>
-        <CardContent className="py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">
-                {Number(data?.summary.avgCostPerConversation || 0) <= 2 ? '✅' : '⚠️'}
-              </span>
-              <span className="font-medium">Cost Target: ৳2.00/conversation</span>
-            </div>
-            <span className={`font-bold ${
-              Number(data?.summary.avgCostPerConversation || 0) <= 2 
-                ? 'text-green-600' 
-                : 'text-yellow-600'
-            }`}>
-              Current: ৳{data?.summary.avgCostPerConversation}
-            </span>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Cost History Chart */}
-        <Card className="lg:col-span-2">
+        {/* Cost Trend */}
+        <SmartCard>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="text-lg font-semibold flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-primary" />
               Cost Trend (Last 30 Days)
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={data?.history || []}>
-                  <defs>
-                    <linearGradient id="costGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis dataKey="displayDate" className="text-xs fill-muted-foreground" />
-                  <YAxis className="text-xs fill-muted-foreground" tickFormatter={(value) => `৳${value}`} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--card))",
-                      borderColor: "hsl(var(--border))",
-                      borderRadius: "0.5rem",
-                    }}
-                    formatter={(value: number) => [`৳${value.toFixed(2)}`, "Cost"]}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="cost"
-                    stroke="hsl(var(--primary))"
-                    strokeWidth={2}
-                    fill="url(#costGradient)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+            <ChartContainer
+              config={{
+                cost: {
+                  label: "Cost",
+                  color: "hsl(var(--chart-1))",
+                },
+              }}
+              className="h-[280px] w-full"
+            >
+              <AreaChart data={data?.history || []}>
+                <defs>
+                  <linearGradient id="costGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="var(--border)"
+                  strokeOpacity={0.3}
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="displayDate"
+                  stroke="var(--muted-foreground)"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  stroke="var(--muted-foreground)"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(v) => `৳${v.toFixed(2)}`}
+                />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Area
+                  type="monotone"
+                  dataKey="cost"
+                  stroke="hsl(var(--chart-1))"
+                  strokeWidth={2.5}
+                  fill="url(#costGradient)"
+                  dot={false}
+                  activeDot={{ r: 6, fill: "hsl(var(--chart-1))" }}
+                />
+              </AreaChart>
+            </ChartContainer>
           </CardContent>
-        </Card>
+        </SmartCard>
 
-        {/* Cost Distribution Pie */}
-        <Card>
+        {/* Cost Distribution */}
+        <SmartCard>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="text-lg font-semibold flex items-center gap-2">
               <PieChartIcon className="h-5 w-5 text-primary" />
-              Cost Distribution
+              Cost Distribution by API Type
             </CardTitle>
-            <CardDescription>Breakdown by API type</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={data?.breakdown || []}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="cost"
-                    nameKey="type"
-                    label={({ percent }) => percent > 0.05 ? `${(percent * 100).toFixed(0)}%` : ''}
-                  >
-                    {(data?.breakdown || []).map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value: number) => [`৳${value.toFixed(2)}`, "Cost"]} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
+            <ChartContainer config={{}} className="h-[280px] w-full">
+              <PieChart>
+                <Pie
+                  data={data?.breakdown || []}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="cost"
+                  nameKey="type"
+                  label={({ percent = 0 }) => percent > 0.05 ? `${(percent * 100).toFixed(0)}%` : ''}
+                >
+                  {(data?.breakdown || []).map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <ChartTooltip 
+                  formatter={(value: number) => [`৳${value.toFixed(4)}`, "Cost"]}
+                />
+              </PieChart>
+            </ChartContainer>
           </CardContent>
-        </Card>
-
-        {/* Detailed Breakdown */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Detailed Breakdown</CardTitle>
-            <CardDescription>Usage by feature type</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {(data?.breakdown || []).map((item, index) => (
-                <div key={item.rawType} className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/30">
-                  <div className="flex items-center gap-3">
-                    <div 
-                      className="w-3 h-3 rounded-full" 
-                      style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                    />
-                    <div>
-                      <p className="font-medium text-sm">{item.type}</p>
-                      <p className="text-xs text-muted-foreground">{item.count} calls</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-mono font-medium text-sm">৳{item.cost.toFixed(2)}</p>
-                    <p className="text-xs text-muted-foreground">{item.percentage.toFixed(1)}%</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        </SmartCard>
       </div>
 
-      {/* Per Workspace Breakdown */}
-      <Card>
+      {/* Detailed Breakdown */}
+      <SmartCard>
         <CardHeader>
-          <CardTitle>Cost by Workspace</CardTitle>
-          <CardDescription>Compare spending across users</CardDescription>
+          <CardTitle className="text-lg font-semibold flex items-center gap-2">
+            <DollarSign className="h-5 w-5 text-primary" />
+            Detailed Breakdown
+          </CardTitle>
         </CardHeader>
         <CardContent>
+          <div className="space-y-3">
+            {(data?.breakdown || []).map((item, index) => (
+              <div key={item.rawType} className="flex items-center justify-between p-3 rounded-xl border border-border/50 hover:bg-muted/30 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div 
+                    className="w-3 h-3 rounded-full" 
+                    style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                  />
+                  <div>
+                    <p className="font-medium text-sm">{item.type}</p>
+                    <p className="text-xs text-muted-foreground">{item.count} calls</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="font-mono font-medium text-sm">৳{item.cost.toFixed(4)}</p>
+                  <p className="text-xs text-muted-foreground">{item.percentage.toFixed(1)}%</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </SmartCard>
+
+      {/* Per Workspace Breakdown */}
+      <SmartCard>
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold flex items-center gap-2">
+            <Building2 className="h-5 w-5 text-primary" />
+            Per Workspace Costs
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="text-left py-3 px-4 font-medium text-muted-foreground text-sm">Workspace</th>
-                  <th className="text-right py-3 px-4 font-medium text-muted-foreground text-sm">Today</th>
-                  <th className="text-right py-3 px-4 font-medium text-muted-foreground text-sm">This Week</th>
-                  <th className="text-right py-3 px-4 font-medium text-muted-foreground text-sm">This Month</th>
+                  <th className="text-left py-3 px-4 font-medium text-muted-foreground text-xs">Workspace</th>
+                  <th className="text-right py-3 px-4 font-medium text-muted-foreground text-xs">Today</th>
+                  <th className="text-right py-3 px-4 font-medium text-muted-foreground text-xs">Week</th>
+                  <th className="text-right py-3 px-4 font-medium text-muted-foreground text-xs">Month</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-border">
                 {(data?.perWorkspace || []).map((ws) => (
-                  <tr key={ws.id} className="border-b border-border/50 hover:bg-muted/30">
+                  <tr key={ws.id} className="hover:bg-muted/30 transition-colors">
                     <td className="py-3 px-4">
                       <Link href={`/admin/workspaces/${ws.id}`} className="font-medium text-sm hover:underline">
                         {ws.name}
                       </Link>
                     </td>
-                    <td className="text-right py-3 px-4 font-mono text-sm">৳{ws.today.toFixed(2)}</td>
-                    <td className="text-right py-3 px-4 font-mono text-sm">৳{ws.week.toFixed(2)}</td>
-                    <td className="text-right py-3 px-4 font-mono text-sm">৳{ws.month.toFixed(2)}</td>
+                    <td className="text-right py-3 px-4 font-mono text-sm">৳{ws.today.toFixed(4)}</td>
+                    <td className="text-right py-3 px-4 font-mono text-sm">৳{ws.week.toFixed(4)}</td>
+                    <td className="text-right py-3 px-4 font-mono text-sm">৳{ws.month.toFixed(4)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </CardContent>
-      </Card>
+      </SmartCard>
     </div>
   )
 }

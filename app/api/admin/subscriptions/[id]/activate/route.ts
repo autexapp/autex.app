@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/supabase'
 import { calculateExpiryDate, SUBSCRIPTION_PLANS, type SubscriptionPlan } from '@/lib/subscription/utils'
+import { sendAdminSubscriptionEmail, sendSubscriptionActivatedEmail } from '@/lib/email/send'
 
 // Admin email check
 const ADMIN_EMAIL = 'admin@gmail.com'
@@ -80,10 +81,10 @@ export async function POST(
     const durationDays = body.duration_days || 30
     const paymentMethod = body.payment_method || 'bkash'
 
-    // Check workspace exists
+    // Check workspace exists and get owner
     const { data: workspace, error: workspaceError } = await supabase
       .from('workspaces')
-      .select('id, name, subscription_status, total_paid')
+      .select('id, name, subscription_status, total_paid, owner_id')
       .eq('id', workspaceId)
       .single()
 
@@ -140,6 +141,42 @@ export async function POST(
     if (paymentError) {
       console.error('Error recording payment:', paymentError)
       // Don't fail the request, subscription is already activated
+    }
+
+    // Determine if this is a renewal (was already active before)
+    const isRenewal = workspace.subscription_status === 'active'
+
+    // Get owner email for notifications
+    let ownerEmail: string | null = null
+    try {
+      const { data: { user } } = await supabase.auth.admin.getUserById(workspace.owner_id)
+      ownerEmail = user?.email || null
+    } catch (err) {
+      console.error('Error getting owner email:', err)
+    }
+
+    // Send admin notification email (non-blocking)
+    sendAdminSubscriptionEmail(
+      workspace.name,
+      ownerEmail || 'Unknown',
+      SUBSCRIPTION_PLANS[body.plan].name,
+      body.amount,
+      paymentMethod,
+      durationDays,
+      expiryDate,
+      body.transaction_id,
+      isRenewal
+    ).catch(err => console.error('Error sending admin notification:', err))
+
+    // Send user activation email (non-blocking)
+    if (ownerEmail) {
+      sendSubscriptionActivatedEmail(
+        ownerEmail,
+        workspace.name,
+        SUBSCRIPTION_PLANS[body.plan].name,
+        expiryDate,
+        durationDays
+      ).catch(err => console.error('Error sending user activation email:', err))
     }
 
     console.log(`✅ Subscription activated for ${workspace.name}: ${body.plan} for ${durationDays} days`)

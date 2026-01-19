@@ -8,7 +8,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/supabase'
-import { calculateExpiryDate } from '@/lib/subscription/utils'
+import { calculateExpiryDate, SUBSCRIPTION_PLANS } from '@/lib/subscription/utils'
+import { sendAdminSubscriptionEmail } from '@/lib/email/send'
 
 const ADMIN_EMAIL = 'admin@gmail.com'
 
@@ -60,7 +61,7 @@ export async function POST(
     // Get current workspace
     const { data: workspace, error: workspaceError } = await supabase
       .from('workspaces')
-      .select('id, name, subscription_status, subscription_plan, subscription_expires_at, total_paid')
+      .select('id, name, subscription_status, subscription_plan, subscription_expires_at, total_paid, owner_id')
       .eq('id', workspaceId)
       .single()
 
@@ -110,6 +111,32 @@ export async function POST(
       notes: body.notes || `Extended by ${daysToAdd} days`,
       activated_by: user.email,
     })
+
+    // Get owner email for notifications
+    let ownerEmail: string | null = null
+    try {
+      const { data: { user: owner } } = await supabase.auth.admin.getUserById(workspace.owner_id)
+      ownerEmail = owner?.email || null
+    } catch (err) {
+      console.error('Error getting owner email:', err)
+    }
+
+    // Send admin notification email (non-blocking)
+    const planName = workspace.subscription_plan 
+      ? SUBSCRIPTION_PLANS[workspace.subscription_plan as keyof typeof SUBSCRIPTION_PLANS]?.name 
+      : 'Extension'
+    
+    sendAdminSubscriptionEmail(
+      workspace.name,
+      ownerEmail || 'Unknown',
+      planName || 'Subscription Extension',
+      body.amount,
+      paymentMethod,
+      daysToAdd,
+      newExpiryDate,
+      body.transaction_id,
+      true // isRenewal
+    ).catch(err => console.error('Error sending admin notification:', err))
 
     console.log(`✅ Subscription extended for ${workspace.name}: +${daysToAdd} days`)
 

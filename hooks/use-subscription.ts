@@ -3,12 +3,20 @@
  * 
  * React hook for fetching and managing subscription state.
  * Used by subscription card, banner, and other UI components.
+ * 
+ * Features:
+ * - Fetches subscription status on mount
+ * - Polls every 60 seconds for updates
+ * - Listens for realtime workspace changes
+ * - Provides refetch function for manual refresh
  */
 
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { SUBSCRIPTION_PLANS, CONTACT_NUMBERS, type SubscriptionPlan } from '@/lib/subscription/utils'
+import { createClient } from '@/lib/supabase/client'
+import { useWorkspace } from '@/lib/workspace-provider'
 
 export interface SubscriptionState {
   status: 'trial' | 'active' | 'expired'
@@ -43,19 +51,33 @@ export interface UseSubscriptionReturn {
   refetch: () => Promise<void>
 }
 
+// Polling interval in milliseconds (60 seconds)
+const POLLING_INTERVAL = 60 * 1000
+
 export function useSubscription(): UseSubscriptionReturn {
+  const { workspaceId } = useWorkspace()
   const [subscription, setSubscription] = useState<SubscriptionState | null>(null)
   const [contact, setContact] = useState<ContactInfo | null>(null)
   const [workspaceName, setWorkspaceName] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const pollingRef = useRef<NodeJS.Timeout | null>(null)
 
   const fetchSubscription = useCallback(async () => {
     try {
-      setIsLoading(true)
+      // Don't set loading on refetch to avoid flickering
+      if (!subscription) {
+        setIsLoading(true)
+      }
       setError(null)
 
-      const response = await fetch('/api/subscription/status')
+      const response = await fetch('/api/subscription/status', {
+        // Prevent caching to always get fresh data
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+        },
+      })
       
       if (!response.ok) {
         if (response.status === 401) {
@@ -80,11 +102,51 @@ export function useSubscription(): UseSubscriptionReturn {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [subscription])
 
+  // Initial fetch and polling
   useEffect(() => {
     fetchSubscription()
-  }, [fetchSubscription])
+
+    // Set up polling interval
+    pollingRef.current = setInterval(() => {
+      fetchSubscription()
+    }, POLLING_INTERVAL)
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
+      }
+    }
+  }, []) // Only run on mount
+
+  // Realtime subscription to workspace changes
+  useEffect(() => {
+    if (!workspaceId) return
+
+    const supabase = createClient()
+
+    const channel = supabase
+      .channel(`workspace-subscription-${workspaceId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'workspaces',
+          filter: `id=eq.${workspaceId}`,
+        },
+        (payload) => {
+          console.log('[Subscription] Workspace updated, refetching...', payload)
+          fetchSubscription()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [workspaceId, fetchSubscription])
 
   return {
     subscription,

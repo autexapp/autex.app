@@ -143,6 +143,7 @@ export async function POST(request: NextRequest) {
         workspace_id: workspaceId,
         page_name: pageName,
         encrypted_access_token: encryptedToken,
+        bot_enabled: false, // Disable bot by default - user must complete setup first
         status: 'connected',
       }, {
         onConflict: 'id',

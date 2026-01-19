@@ -2,9 +2,10 @@
  * Trial Ending Email Template
  * 
  * Sent 1 day before the trial expires.
+ * Design matches Autex Dashboard aesthetic.
  */
 
-import { Button, Heading, Text, Hr } from '@react-email/components';
+import { Button, Heading, Text, Hr, Section } from '@react-email/components';
 import * as React from 'react';
 import { BaseTemplate } from './base-template';
 
@@ -15,10 +16,15 @@ interface TrialEndingEmailProps {
 
 export const TrialEndingEmail = ({ businessName, expiryDate }: TrialEndingEmailProps) => (
   <BaseTemplate preview="Your Autex AI trial ends tomorrow! Don't lose access.">
-    <Heading style={heading}>⏰ Your Trial Ends Tomorrow!</Heading>
+    {/* Header Badge */}
+    <Section style={badgeContainer}>
+      <Text style={badge}>⏰ Reminder</Text>
+    </Section>
+    
+    <Heading style={heading}>Your Trial Ends Tomorrow!</Heading>
     
     <Text style={paragraph}>
-      Hi {businessName},
+      Hi <strong>{businessName}</strong>,
     </Text>
     
     <Text style={paragraph}>
@@ -26,83 +32,189 @@ export const TrialEndingEmail = ({ businessName, expiryDate }: TrialEndingEmailP
       After that, your bot will stop responding to customers.
     </Text>
     
-    <Text style={urgentBox}>
-      💡 <strong>Enjoying Autex?</strong> Continue using it by upgrading your subscription.
-    </Text>
+    {/* Info Box */}
+    <Section style={infoBox}>
+      <Text style={infoBoxText}>
+        💡 <strong>Enjoying Autex?</strong> Upgrade now to keep your AI running!
+      </Text>
+    </Section>
     
-    <Hr style={hr} />
+    <Hr style={divider} />
     
-    <Text style={paragraph}>
-      <strong>Plans start at just ৳499/month:</strong>
-    </Text>
+    <Text style={sectionTitle}>Choose Your Plan:</Text>
     
-    <Text style={planItem}>📦 <strong>Starter</strong> — ৳499/mo</Text>
-    <Text style={planItem}>🚀 <strong>Pro</strong> — ৳599/mo (Founder Price!)</Text>
-    <Text style={planItem}>🏢 <strong>Business</strong> — ৳1,799/mo</Text>
+    {/* Pricing Cards */}
+    <Section style={pricingContainer}>
+      <table width="100%" cellPadding="0" cellSpacing="0" role="presentation">
+        <tr>
+          <td style={pricingCard}>
+            <Text style={planName}>Starter</Text>
+            <Text style={planPrice}>৳499<span style={planPeriod}>/mo</span></Text>
+          </td>
+          <td width="12"></td>
+          <td style={pricingCardHighlight}>
+            <Text style={planBadge}>Popular</Text>
+            <Text style={planName}>Pro</Text>
+            <Text style={planPrice}>৳899<span style={planPeriod}>/mo</span></Text>
+          </td>
+          <td width="12"></td>
+          <td style={pricingCard}>
+            <Text style={planName}>Business</Text>
+            <Text style={planPrice}>৳1,799<span style={planPeriod}>/mo</span></Text>
+          </td>
+        </tr>
+      </table>
+    </Section>
     
-    <Button style={button} href="https://wa.me/8801977994057?text=Hi%2C%20I%20want%20to%20upgrade%20my%20Autex%20subscription.">
-      💬 Message Us on WhatsApp
-    </Button>
+    <Section style={buttonContainer}>
+      <Button style={primaryButton} href="https://wa.me/8801977994057?text=Hi%2C%20I%20want%20to%20upgrade%20my%20Autex%20subscription.">
+        💬 Upgrade on WhatsApp
+      </Button>
+    </Section>
     
-    <Text style={finePrint}>
-      Pay via bKash to 01915969330 and send us a screenshot on WhatsApp.
+    <Text style={helpText}>
+      Pay via bKash to <strong>01915969330</strong> and send screenshot on WhatsApp.
     </Text>
   </BaseTemplate>
 );
 
-// Styles
+// ============================================
+// STYLES
+// ============================================
+
+const badgeContainer = {
+  textAlign: 'center' as const,
+  marginBottom: '16px',
+};
+
+const badge = {
+  display: 'inline-block',
+  backgroundColor: '#fef3c7', // amber-100
+  color: '#92400e', // amber-800
+  padding: '6px 16px',
+  borderRadius: '9999px',
+  fontSize: '14px',
+  fontWeight: '600' as const,
+  margin: '0',
+};
+
 const heading = {
-  fontSize: '24px',
+  fontSize: '28px',
   fontWeight: '700' as const,
-  color: '#18181b',
+  color: '#18181b', // zinc-900
   textAlign: 'center' as const,
   margin: '0 0 24px',
+  lineHeight: '1.3',
+  letterSpacing: '-0.025em',
 };
 
 const paragraph = {
   fontSize: '16px',
   lineHeight: '1.6',
-  color: '#3f3f46',
+  color: '#3f3f46', // zinc-700
   margin: '0 0 16px',
 };
 
-const urgentBox = {
-  backgroundColor: '#fef3c7',
-  padding: '16px',
-  borderRadius: '8px',
-  fontSize: '16px',
-  color: '#92400e',
+const infoBox = {
+  backgroundColor: '#fef3c7', // amber-100
+  padding: '16px 20px',
+  borderRadius: '12px',
   margin: '24px 0',
+  border: '1px solid #fde68a', // amber-200
 };
 
-const hr = {
-  borderColor: '#e4e4e7',
-  margin: '24px 0',
-};
-
-const planItem = {
+const infoBoxText = {
   fontSize: '15px',
-  color: '#3f3f46',
-  margin: '8px 0',
+  color: '#92400e', // amber-800
+  margin: '0',
+  textAlign: 'center' as const,
 };
 
-const button = {
-  backgroundColor: '#22c55e',
-  borderRadius: '8px',
+const divider = {
+  borderColor: '#e4e4e7', // zinc-200
+  margin: '28px 0',
+};
+
+const sectionTitle = {
+  fontSize: '14px',
+  fontWeight: '600' as const,
+  color: '#71717a', // zinc-500
+  textTransform: 'uppercase' as const,
+  letterSpacing: '0.05em',
+  margin: '0 0 16px',
+  textAlign: 'center' as const,
+};
+
+const pricingContainer = {
+  margin: '0 0 24px',
+};
+
+const pricingCard = {
+  backgroundColor: '#f4f4f5', // zinc-100
+  borderRadius: '12px',
+  padding: '16px',
+  textAlign: 'center' as const,
+  verticalAlign: 'top' as const,
+};
+
+const pricingCardHighlight = {
+  backgroundColor: '#18181b', // zinc-900
+  borderRadius: '12px',
+  padding: '16px',
+  textAlign: 'center' as const,
+  verticalAlign: 'top' as const,
   color: '#ffffff',
-  fontSize: '16px',
+};
+
+const planBadge = {
+  fontSize: '10px',
+  fontWeight: '600' as const,
+  color: '#22c55e', // green-500
+  textTransform: 'uppercase' as const,
+  letterSpacing: '0.1em',
+  margin: '0 0 4px',
+};
+
+const planName = {
+  fontSize: '14px',
+  fontWeight: '600' as const,
+  margin: '0 0 4px',
+};
+
+const planPrice = {
+  fontSize: '20px',
+  fontWeight: '700' as const,
+  margin: '0',
+};
+
+const planPeriod = {
+  fontSize: '12px',
+  fontWeight: '400' as const,
+  opacity: 0.7,
+};
+
+const buttonContainer = {
+  textAlign: 'center' as const,
+  margin: '28px 0 16px',
+};
+
+const primaryButton = {
+  backgroundColor: '#22c55e', // green-500
+  borderRadius: '10px',
+  color: '#ffffff',
+  fontSize: '15px',
   fontWeight: '600' as const,
   textDecoration: 'none',
   textAlign: 'center' as const,
-  display: 'block',
-  padding: '14px 24px',
-  margin: '24px auto',
+  display: 'inline-block',
+  padding: '14px 28px',
 };
 
-const finePrint = {
+const helpText = {
   fontSize: '13px',
-  color: '#71717a',
+  color: '#71717a', // zinc-500
   textAlign: 'center' as const,
+  margin: '0',
 };
 
 export default TrialEndingEmail;
